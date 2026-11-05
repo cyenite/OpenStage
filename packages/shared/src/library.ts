@@ -1,4 +1,5 @@
 import type { BackgroundRender } from './render'
+import type { Theme } from './themes'
 
 export type Id = string
 
@@ -54,6 +55,8 @@ export interface Song {
   /** Language codes; the first is the language of `lines`, the rest are keys of `translations` in display order. */
   languages: string[]
   meta: { authors: string[]; copyright: string; ccli?: string; key?: string; tempo?: number }
+  /** Overrides the service's theme for this song; left out, the song follows the service. */
+  themeId?: Id
   sections: Record<Id, Section>
   arrangements: Arrangement[]
 }
@@ -73,6 +76,7 @@ export type ServiceItem =
 export interface Service {
   id: Id
   name: string
+  themeId?: Id
   items: ServiceItem[]
 }
 
@@ -101,6 +105,7 @@ export interface DocumentTypes {
   backgrounds: Background
   lowerThirds: LowerThird
   audioCues: AudioCue
+  themes: Theme
 }
 
 export type DocumentKind = keyof DocumentTypes
@@ -112,6 +117,7 @@ export const documentKinds = {
   backgrounds: { label: 'Backgrounds' },
   lowerThirds: { label: 'Lower thirds' },
   audioCues: { label: 'Audio cues' },
+  themes: { label: 'Themes' },
 } as const satisfies Record<DocumentKind, { label: string }>
 
 export const documentKindKeys = Object.keys(documentKinds) as DocumentKind[]
@@ -131,6 +137,8 @@ export function lookup<T>(records: Record<Id, T>, id: Id | null | undefined): T 
 /** A service item flattened into the slides an operator steps through. */
 export interface Deck {
   itemId: Id
+  /** The song's theme, else the service's; may point nowhere, and then the classic theme is used. */
+  themeId: Id | null
   title: string
   subtitle: string
   slides: DeckSlide[]

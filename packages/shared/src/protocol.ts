@@ -1,3 +1,5 @@
+import type { BackgroundRender } from './render'
+import type { BoxPatch, Theme, ThemeBoxRole } from './themes'
 import type { AudioCue, Background, Deck, DocumentKind, DocumentRef, DocumentTypes, Id, LowerThird, SectionKind, Service, Song } from './library'
 import type { LayerKey } from './layers'
 import type { RenderState } from './render'
@@ -37,6 +39,10 @@ export type Command =
   | { type: 'song.delete'; songId: Id }
   | { type: 'song.edit'; songId: Id; edit: SongEdit }
   | { type: 'service.edit'; serviceId: Id; edit: ServiceEdit }
+  /** Starts from a copy of `fromThemeId` when given, else from the classic theme. */
+  | { type: 'theme.create'; themeId: Id; name: string; fromThemeId?: Id }
+  | { type: 'theme.delete'; themeId: Id }
+  | { type: 'theme.edit'; themeId: Id; edit: ThemeEdit }
   | { type: 'document.undo'; ref: DocumentRef }
   | { type: 'document.redo'; ref: DocumentRef }
 
@@ -53,13 +59,21 @@ export type SongEdit =
   | { type: 'song.removeSection'; sectionId: Id }
   | { type: 'song.setArrangement'; arrangementId: Id; name: string; sectionIds: Id[] }
   | { type: 'song.removeArrangement'; arrangementId: Id }
+  /** Null makes the song follow the service's theme again. */
+  | { type: 'song.setTheme'; themeId: Id | null }
 
 export type ServiceEdit =
   /** The engine fills in the song's first arrangement when `arrangementId` is left out. */
   | { type: 'service.addSong'; itemId: Id; songId: Id; arrangementId?: Id }
   | { type: 'service.removeItem'; itemId: Id }
+  | { type: 'service.setTheme'; themeId: Id }
 
-export type EditableKind = 'songs' | 'services'
+export type ThemeEdit =
+  | { type: 'theme.setName'; name: string }
+  | { type: 'theme.setFill'; fill: BackgroundRender | null }
+  | { type: 'theme.setBox'; role: ThemeBoxRole; style: BoxPatch }
+
+export type EditableKind = 'songs' | 'services' | 'themes'
 
 export type LibraryQuery =
   | { type: 'library.search'; text: string; kind?: DocumentKind; limit?: number }
@@ -94,7 +108,9 @@ export interface OperatorSnapshot {
   state: EngineState
   decks: Deck[]
   service: Service
-  library: { backgrounds: Background[]; lowerThirds: LowerThird[]; audioCues: AudioCue[] }
+  library: { themes: Theme[]; backgrounds: Background[]; lowerThirds: LowerThird[]; audioCues: AudioCue[] }
+  /** How many songs and services point at each theme, so the UI can say why one cannot be deleted. */
+  themeUses: Record<Id, number>
   /** Bumped on every document change, so library views know to query again. */
   libraryRevision: number
   outputs: OutputStatus[]

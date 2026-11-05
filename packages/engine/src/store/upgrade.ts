@@ -1,4 +1,4 @@
-import type { Chord, DocumentKind, DocumentTypes, SlideContent, Song, TextLine } from '@openstage/shared'
+import { classicTheme, themeBoxRoles, type Chord, type DocumentKind, type DocumentTypes, type SlideContent, type Song, type TextLine, type Theme } from '@openstage/shared'
 
 type Loose<T> = { [K in keyof T]?: unknown }
 
@@ -7,7 +7,23 @@ type Loose<T> = { [K in keyof T]?: unknown }
  * itself is only rewritten by the next real edit.
  */
 export function upgradeDocument<K extends DocumentKind>(kind: K, document: DocumentTypes[K]): DocumentTypes[K] {
-  return kind === 'songs' ? (upgradeSong(document as Song) as DocumentTypes[K]) : document
+  if (kind === 'songs') return upgradeSong(document as Song) as DocumentTypes[K]
+  if (kind === 'themes') return completeTheme(document as Theme) as DocumentTypes[K]
+  return document
+}
+
+/** A hand-edited theme missing a box or a field takes the classic theme's, so layout never meets a hole. */
+function completeTheme(theme: Theme): Theme {
+  const raw = theme as Loose<Theme> & Theme
+  const boxes = Object.fromEntries(
+    themeBoxRoles.map(({ key }) => {
+      const base = classicTheme.boxes[key]
+      const own = (raw.boxes as Partial<Theme['boxes']>)[key] ?? base
+      return [key, { ...base, ...own, font: { ...base.font, ...own.font }, frame: { ...base.frame, ...own.frame } }]
+    }),
+  ) as Theme['boxes']
+  const overrides = raw.overrides && typeof raw.overrides === 'object' ? raw.overrides : {}
+  return { ...theme, fill: raw.fill ?? null, boxes, overrides }
 }
 
 function upgradeSong(song: Song): Song {

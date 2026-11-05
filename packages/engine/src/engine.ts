@@ -20,9 +20,10 @@ import {
   type ServiceEdit,
   type ServiceItem,
   type SongEdit,
+  type ThemeEdit,
 } from '@openstage/shared'
 import { buildDecks } from './decks'
-import { applyServiceEdit, applySongEdit, createSong } from './edits'
+import { applyServiceEdit, applySongEdit, applyThemeEdit, createSong, createTheme } from './edits'
 import { outputs, resolveRender, type OutputId } from './resolve'
 import { initialState, reduce, sanitize } from './state'
 import { DocumentHistory } from './store/history'
@@ -42,6 +43,7 @@ interface Client {
 
 interface Edits {
   songs: SongEdit
+  themes: ThemeEdit
   services: ServiceEdit
 }
 
@@ -49,6 +51,7 @@ type History = DocumentHistory<DocumentTypes[EditableKind], Edits[EditableKind]>
 
 const appliers: { [K in EditableKind]: (document: DocumentTypes[K], edit: Edits[K]) => DocumentTypes[K] } = {
   songs: applySongEdit,
+  themes: applyThemeEdit,
   services: applyServiceEdit,
 }
 
@@ -139,6 +142,12 @@ export class Engine {
         return this.edit('songs', command.songId, (history) => history.execute(command.edit))
       case 'service.edit':
         return this.edit('services', command.serviceId, (history) => history.execute(this.completeServiceEdit(command.edit)))
+      case 'theme.create':
+        return this.createTheme(command)
+      case 'theme.delete':
+        return this.deleteTheme(command.themeId)
+      case 'theme.edit':
+        return this.edit('themes', command.themeId, (history) => history.execute(command.edit))
       case 'document.undo':
         if (isEditable(command.ref?.kind)) this.edit(command.ref.kind, command.ref.id, (history) => history.undo())
         return
@@ -162,11 +171,13 @@ export class Engine {
       decks: this.decks,
       service: this.service,
       library: {
+        themes: Object.values(this.library.themes).sort(byName),
         audioCues: Object.values(this.library.audioCues).sort(byName),
         backgrounds: Object.values(this.library.backgrounds).sort(byName),
         lowerThirds: Object.values(this.library.lowerThirds).sort((a, b) => a.title.localeCompare(b.title)),
       },
       libraryRevision: this.libraryRevision,
+      themeUses: this.themeUses(),
       outputs: outputs.map((o) => {
         const channel = this.channels.get(o.id)
         return {
@@ -244,6 +255,33 @@ export class Engine {
     this.histories.delete(`songs/${songId}`)
     this.options.onDocumentRemove?.('songs', songId)
     this.afterLibraryChange({ kind: 'songs', id: songId })
+  }
+
+  private createTheme(command: Extract<Command, { type: 'theme.create' }>): void {
+    if (!isSafeId(command.themeId) || Object.hasOwn(this.library.themes, command.themeId)) return
+    this.store('themes', createTheme(command.themeId, command.name, lookup(this.library.themes, command.fromThemeId)))
+  }
+
+  /** Refused while a song or service still points at it; the classic theme is the fallback and is never deleted. */
+  private deleteTheme(themeId: Id): void {
+    if (!Object.hasOwn(this.library.themes, themeId) || themeId === 'classic' || this.isThemeInUse(themeId)) return
+    const { [themeId]: _removed, ...themes } = this.library.themes
+    this.library = { ...this.library, themes }
+    this.histories.delete(`themes/${themeId}`)
+    this.options.onDocumentRemove?.('themes', themeId)
+    this.afterLibraryChange({ kind: 'themes', id: themeId })
+  }
+
+  isThemeInUse(themeId: Id): boolean {
+    return (this.themeUses()[themeId] ?? 0) > 0
+  }
+
+  private themeUses(): Record<Id, number> {
+    const uses: Record<Id, number> = {}
+    for (const document of [...Object.values(this.library.songs), ...Object.values(this.library.services)]) {
+      if (document.themeId) uses[document.themeId] = (uses[document.themeId] ?? 0) + 1
+    }
+    return uses
   }
 
   isSongInUse(songId: Id): boolean {

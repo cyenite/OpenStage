@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { SearchHit } from '@openstage/shared'
 import { useLibraryQuery } from '../engine'
+import { LibraryTabs, type EditLibrary } from './LibraryTabs'
 
 interface SongLibraryProps {
   revision: number
@@ -9,9 +10,10 @@ interface SongLibraryProps {
   serviceSongIds: Set<string>
   onNew: () => void
   onSelect: (songId: string) => void
+  onLibrary: (library: EditLibrary) => void
 }
 
-export function SongLibrary({ revision, selectedId, searchRequest, serviceSongIds, onNew, onSelect }: SongLibraryProps) {
+export function SongLibrary({ revision, selectedId, searchRequest, serviceSongIds, onNew, onSelect, onLibrary }: SongLibraryProps) {
   const [text, setText] = useState('')
   const input = useRef<HTMLInputElement>(null)
   const all = useLibraryQuery({ type: 'library.list', kind: 'songs' }, revision)
@@ -25,7 +27,7 @@ export function SongLibrary({ revision, selectedId, searchRequest, serviceSongId
   return (
     <nav className="sidebar song-library" aria-label="Song library">
       <div className="sidebar-head">
-        <h2 className="panel-title">Songs</h2>
+        <LibraryTabs library="songs" onLibrary={onLibrary} />
         <button className="button-small" onClick={onNew}>
           New song
         </button>

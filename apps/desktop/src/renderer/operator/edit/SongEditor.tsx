@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { newId, type Service, type SongEdit } from '@openstage/shared'
+import { newId, type Id, type Service, type SongEdit, type Theme } from '@openstage/shared'
 import { dispatch, useDocument } from '../engine'
 import { ArrangementPanel } from './ArrangementPanel'
 import { CommitField } from './CommitField'
@@ -8,12 +8,14 @@ import { SongDetails } from './SongDetails'
 
 interface SongEditorProps {
   songId: string
+  themes: Theme[]
   service: Service
   isInService: boolean
   onDeleted: () => void
+  onOpenTheme: (themeId: Id) => void
 }
 
-export function SongEditor({ songId, service, isInService, onDeleted }: SongEditorProps) {
+export function SongEditor({ songId, themes, service, isInService, onDeleted, onOpenTheme }: SongEditorProps) {
   const { document: song, canUndo, canRedo, isLoaded } = useDocument('songs', songId)
   const [arrangementId, setArrangementId] = useState<string | null>(null)
   const [isConfirmingDelete, setConfirmingDelete] = useState(false)
@@ -89,7 +91,7 @@ export function SongEditor({ songId, service, isInService, onDeleted }: SongEdit
           </button>
         </section>
       </div>
-      <SongDetails song={song} arrangement={arrangement} onEdit={edit} />
+      <SongDetails song={song} themes={themes} service={service} arrangement={arrangement} onEdit={edit} onOpenTheme={onOpenTheme} />
     </div>
   )
 }

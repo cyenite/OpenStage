@@ -1,13 +1,14 @@
 import { lookup, type Deck, type DeckSlide, type Library, type Service, type ServiceItem, type SlideRef } from '@openstage/shared'
 
 export function buildDecks(service: Service, library: Library): Deck[] {
-  return service.items.map((item) => buildDeck(item, library))
+  return service.items.map((item) => buildDeck(item, service, library))
 }
 
-function buildDeck(item: ServiceItem, library: Library): Deck {
+function buildDeck(item: ServiceItem, service: Service, library: Library): Deck {
+  const serviceThemeId = service.themeId ?? null
   if (item.type === 'scripture') {
     const passage = lookup(library.passages, item.passageId)
-    if (!passage) return { itemId: item.id, title: 'Missing passage', subtitle: item.passageId, slides: [] }
+    if (!passage) return { itemId: item.id, themeId: serviceThemeId, title: 'Missing passage', subtitle: item.passageId, slides: [] }
     const [main = '', secondary] = passage.translations
     const book = passage.reference.replace(/:.*$/, '')
     const slides: DeckSlide[] = passage.verses.map((verse) => ({
@@ -17,11 +18,11 @@ function buildDeck(item: ServiceItem, library: Library): Deck {
       reference: `${book}:${verse.number} ${passage.translations.join(' · ')}`,
       secondaryLines: secondary ? [verse.text[secondary] ?? ''] : [],
     }))
-    return { itemId: item.id, title: passage.reference, subtitle: passage.translations.join(' + '), slides }
+    return { itemId: item.id, themeId: serviceThemeId, title: passage.reference, subtitle: passage.translations.join(' + '), slides }
   }
 
   const song = lookup(library.songs, item.songId)
-  if (!song) return { itemId: item.id, title: 'Missing song', subtitle: item.songId, slides: [] }
+  if (!song) return { itemId: item.id, themeId: serviceThemeId, title: 'Missing song', subtitle: item.songId, slides: [] }
   const arrangement = song.arrangements.find((a) => a.id === item.arrangementId) ?? song.arrangements[0]
   const secondary = song.languages[1]
   const slides: DeckSlide[] = []
@@ -35,7 +36,11 @@ function buildDeck(item: ServiceItem, library: Library): Deck {
     }
   }
   const subtitle = [song.meta.authors.join(', '), song.meta.copyright, `Arrangement: ${arrangement?.name ?? 'none'}`]
-  return { itemId: item.id, title: song.title, subtitle: subtitle.join(' · '), slides }
+  return { itemId: item.id, themeId: song.themeId ?? serviceThemeId, title: song.title, subtitle: subtitle.join(' · '), slides }
+}
+
+export function findDeck(decks: Deck[], ref: SlideRef | null): Deck | null {
+  return ref ? decks.find((d) => d.itemId === ref.itemId) ?? null : null
 }
 
 export function findSlide(decks: Deck[], ref: SlideRef | null): DeckSlide | null {

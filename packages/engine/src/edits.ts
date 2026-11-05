@@ -1,4 +1,6 @@
 import {
+  classicTheme,
+  fontFamilies,
   isSafeId,
   keyPrefersFlats,
   parseLyrics,
@@ -13,8 +15,12 @@ import {
   type Service,
   type ServiceEdit,
   type SlideContent,
+  type BackgroundRender,
+  type BoxStyle,
   type Song,
   type SongEdit,
+  type Theme,
+  type ThemeEdit,
 } from '@openstage/shared'
 
 const isText = (value: unknown): value is string => typeof value === 'string'
@@ -101,6 +107,14 @@ export function applySongEdit(song: Song, edit: SongEdit): Song {
       const arrangements = index >= 0 ? song.arrangements.with(index, arrangement) : [...song.arrangements, arrangement]
       return { ...song, arrangements }
     }
+    case 'song.setTheme': {
+      if (edit.themeId === null) {
+        if (song.themeId === undefined) return song
+        const { themeId: _old, ...rest } = song
+        return rest
+      }
+      return isSafeId(edit.themeId) && edit.themeId !== song.themeId ? { ...song, themeId: edit.themeId } : song
+    }
     case 'song.removeArrangement': {
       const arrangements = song.arrangements.filter((a) => a.id !== edit.arrangementId)
       return arrangements.length > 0 && arrangements.length < song.arrangements.length ? { ...song, arrangements } : song
@@ -117,6 +131,8 @@ export function applyServiceEdit(service: Service, edit: ServiceEdit): Service {
       if (!isSafeId(edit.itemId) || isTaken || !isSafeId(edit.songId) || !isSafeId(edit.arrangementId)) return service
       return { ...service, items: [...service.items, { id: edit.itemId, type: 'song', songId: edit.songId, arrangementId: edit.arrangementId }] }
     }
+    case 'service.setTheme':
+      return isSafeId(edit.themeId) && edit.themeId !== service.themeId ? { ...service, themeId: edit.themeId } : service
     case 'service.removeItem': {
       const items = service.items.filter((i) => i.id !== edit.itemId)
       return items.length < service.items.length ? { ...service, items } : service
@@ -124,6 +140,67 @@ export function applyServiceEdit(service: Service, edit: ServiceEdit): Service {
     default:
       return service
   }
+}
+
+export function createTheme(id: Id, name: string, from: Theme | undefined): Theme {
+  const base = from ?? classicTheme
+  return { ...structuredClone(base), id, name: (isText(name) && name.trim()) || `${base.name} copy` }
+}
+
+export function applyThemeEdit(theme: Theme, edit: ThemeEdit): Theme {
+  switch (edit.type) {
+    case 'theme.setName': {
+      const name = isText(edit.name) ? edit.name.trim() : ''
+      return name && name !== theme.name ? { ...theme, name } : theme
+    }
+    case 'theme.setFill':
+      return isFill(edit.fill) && !same(edit.fill, theme.fill) ? { ...theme, fill: edit.fill } : theme
+    case 'theme.setBox': {
+      if (!Object.hasOwn(theme.boxes, edit.role) || !edit.style || typeof edit.style !== 'object') return theme
+      const current = theme.boxes[edit.role]
+      const { font = {}, frame = {}, ...rest } = edit.style
+      const next: BoxStyle = { ...current, ...rest, font: { ...current.font, ...font }, frame: clampFrame({ ...current.frame, ...frame }) }
+      return isBoxStyle(next) && !same(next, current) ? { ...theme, boxes: { ...theme.boxes, [edit.role]: next } } : theme
+    }
+    default:
+      return theme
+  }
+}
+
+const isColor = (value: unknown): value is string =>
+  isText(value) && /^(#[0-9a-f]{3,8}|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(,\s*(0|1|0?\.\d+)\s*)?\))$/i.test(value)
+const isNumberIn = (value: unknown, min: number, max: number) => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
+
+function isFill(fill: unknown): fill is BackgroundRender | null {
+  if (fill === null) return true
+  const f = fill as BackgroundRender
+  if (f?.kind === 'color') return isColor(f.color)
+  return f?.kind === 'gradient' && isColor(f.from) && isColor(f.to) && isNumberIn(f.angle, -360, 360)
+}
+
+function isBoxStyle(style: BoxStyle): boolean {
+  const { font, align, color, hasShadow, backing } = style
+  const isFamily = fontFamilies.some((f) => f.key === font.family) || (isText(font.family) && /^[\w '",-]{1,100}$/.test(font.family))
+  return (
+    isFamily &&
+    isNumberIn(font.weight, 100, 900) &&
+    isNumberIn(font.size, 0.01, 0.3) &&
+    typeof font.italic === 'boolean' &&
+    ['left', 'center', 'right'].includes(align) &&
+    isColor(color) &&
+    typeof hasShadow === 'boolean' &&
+    (backing === null || isColor(backing))
+  )
+}
+
+/** Keeps a box on screen and at least 2% of it in each direction, whatever the editor sends. */
+function clampFrame(frame: BoxStyle['frame']): BoxStyle['frame'] {
+  const valid = (n: unknown, fallback: number) => (typeof n === 'number' && Number.isFinite(n) ? n : fallback)
+  const w = Math.min(Math.max(valid(frame.w, 0.5), 0.02), 1)
+  const h = Math.min(Math.max(valid(frame.h, 0.2), 0.02), 1)
+  const x = Math.min(Math.max(valid(frame.x, 0), 0), 1 - w)
+  const y = Math.min(Math.max(valid(frame.y, 0), 0), 1 - h)
+  return { x, y, w, h }
 }
 
 function withSection(song: Song, section: Section): Song {

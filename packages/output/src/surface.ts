@@ -69,13 +69,14 @@ function fadeOut(element: HTMLElement, transitionMs: number): void {
   setTimeout(() => element.remove(), transitionMs + 50)
 }
 
+function paint(background: BackgroundRender): string {
+  return background.kind === 'color' ? background.color : `linear-gradient(${background.angle}deg, ${background.from}, ${background.to})`
+}
+
 function buildBackground(background: BackgroundRender): HTMLElement {
   const element = document.createElement('div')
   element.className = 'os-background'
-  element.style.background =
-    background.kind === 'color'
-      ? background.color
-      : `linear-gradient(${background.angle}deg, ${background.from}, ${background.to})`
+  element.style.background = paint(background)
   return element
 }
 
@@ -83,6 +84,7 @@ function buildSlide(slide: SlideRender): HTMLElement {
   const element = document.createElement('div')
   element.className = 'os-slide'
   element.dataset.key = slide.key
+  if (slide.fill) element.style.background = paint(slide.fill)
   for (const box of slide.boxes) element.append(buildBox(box))
   return element
 }
@@ -105,6 +107,10 @@ function buildBox(box: TextBoxRender): HTMLElement {
   })
   element.style.setProperty('--os-font-size', String(box.font.size))
   if (box.hasShadow) element.classList.add('os-shadow')
+  if (box.backing) {
+    element.classList.add('os-backed')
+    element.style.background = box.backing
+  }
   const text = append(element, 'os-text')
   for (const line of box.lines) append(text, 'os-line').textContent = line
   return element

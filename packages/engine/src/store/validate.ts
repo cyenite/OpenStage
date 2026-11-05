@@ -17,6 +17,7 @@ export const documentValidators: { [K in DocumentKind]: (value: Fields) => boole
   backgrounds: (v) => isText(v.name) && isFields(v.render),
   lowerThirds: (v) => isText(v.title) && isText(v.subtitle),
   audioCues: (v) => isText(v.name),
+  themes: (v) => isText(v.name) && isFields(v.boxes),
 }
 
 export function isValidDocument(kind: DocumentKind, value: unknown): boolean {

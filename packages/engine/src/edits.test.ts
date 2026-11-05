@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { Song } from '@openstage/shared'
-import { applyServiceEdit, applySongEdit, createSong } from './edits'
+import { classicTheme, type Song } from '@openstage/shared'
+import { applyServiceEdit, applySongEdit, applyThemeEdit, createSong, createTheme } from './edits'
 import { starterLibrary } from './starter-library'
 
 const grace = starterLibrary.songs['amazing-grace']!
@@ -87,3 +87,42 @@ describe('applyServiceEdit', () => {
     expect(applyServiceEdit(added, { type: 'service.removeItem', itemId: 'item-x' }).items).toEqual(service.items)
   })
 })
+
+describe('themes', () => {
+  const theme = createTheme('mine', 'Mine', classicTheme)
+
+  it('copies the theme it starts from without sharing objects', () => {
+    expect(theme).toMatchObject({ id: 'mine', name: 'Mine', boxes: classicTheme.boxes })
+    expect(theme.boxes.main).not.toBe(classicTheme.boxes.main)
+    expect(createTheme('x', ' ', undefined).name).toBe('Classic copy')
+  })
+
+  it('merges box changes and clamps the frame on screen', () => {
+    const edited = applyThemeEdit(theme, { type: 'theme.setBox', role: 'main', style: { color: '#ff0000', font: { size: 0.1 }, frame: { x: 0.9, w: 0.5 } } })
+    expect(edited.boxes.main).toMatchObject({ color: '#ff0000', font: { size: 0.1, weight: 600 }, frame: { x: 0.5, w: 0.5, y: 0.1 } })
+  })
+
+  it('rejects bad colours, sizes, fonts and fills', () => {
+    const bad = [
+      { color: 'red; background: url(x)' },
+      { font: { size: 2 } },
+      { font: { family: '</style>' } },
+      { align: 'justify' as 'left' },
+      { backing: 'nope' },
+    ]
+    for (const style of bad) expect(applyThemeEdit(theme, { type: 'theme.setBox', role: 'main', style })).toBe(theme)
+    expect(applyThemeEdit(theme, { type: 'theme.setFill', fill: { kind: 'color', color: 'javascript:' } })).toBe(theme)
+    expect(applyThemeEdit(theme, { type: 'theme.setBox', role: 'nope' as 'main', style: { color: '#fff' } })).toBe(theme)
+  })
+
+  it('sets fills, names and song or service themes', () => {
+    const filled = applyThemeEdit(theme, { type: 'theme.setFill', fill: { kind: 'gradient', from: '#000', to: 'rgba(0, 0, 0, 0.5)', angle: 90 } })
+    expect(filled.fill).toEqual({ kind: 'gradient', from: '#000', to: 'rgba(0, 0, 0, 0.5)', angle: 90 })
+    expect(applyThemeEdit(theme, { type: 'theme.setName', name: ' Mine ' })).toBe(theme)
+    const themed = applySongEdit(song, { type: 'song.setTheme', themeId: 'paper' })
+    expect(themed.themeId).toBe('paper')
+    expect('themeId' in applySongEdit(themed, { type: 'song.setTheme', themeId: null })).toBe(false)
+    expect(applyServiceEdit(starterLibrary.services.sunday!, { type: 'service.setTheme', themeId: 'paper' }).themeId).toBe('paper')
+  })
+})
+

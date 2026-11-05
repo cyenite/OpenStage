@@ -7,7 +7,7 @@ import { ServiceOrder } from './components/ServiceOrder'
 import { ShortcutHints } from './components/ShortcutHints'
 import { SlideGrid } from './components/SlideGrid'
 import { TitleBar } from './components/TitleBar'
-import { EditWorkspace } from './edit/EditWorkspace'
+import { EditWorkspace, type EditSelection } from './edit/EditWorkspace'
 import { isMac, useAppearance, useWindowState, useWorkspace } from './chrome'
 import { useShortcuts } from './useShortcuts'
 import { useSnapshot } from './engine'
@@ -18,11 +18,12 @@ export function App() {
   const [workspace, setWorkspace] = useWorkspace()
   const [appearance, setAppearance] = useAppearance()
   const [searchRequest, setSearchRequest] = useState(0)
-  const [editingSongId, setEditingSongId] = useState<string | null>(null)
+  const [editSelection, setEditSelection] = useState<EditSelection>({ library: 'songs', songId: null, themeId: null })
   useShortcuts(workspace === 'present' ? snapshot : null)
 
   const openSearch = () => {
     setWorkspace('edit')
+    setEditSelection((selection) => ({ ...selection, library: 'songs' }))
     setSearchRequest((n) => n + 1)
   }
 
@@ -43,7 +44,7 @@ export function App() {
       {snapshot ? (
         <>
           <TitleBar
-            title={workspace === 'present' ? snapshot.service.name : 'Songs'}
+            title={workspace === 'present' ? snapshot.service.name : editSelection.library === 'songs' ? 'Songs' : 'Themes'}
             subtitle={workspace === 'present' ? `${snapshot.service.items.length} items in the service` : 'Library'}
             snapshot={snapshot}
             workspace={workspace}
@@ -56,7 +57,7 @@ export function App() {
           {workspace === 'present' ? (
             <PresentWorkspace snapshot={snapshot} onOpenSongs={() => setWorkspace('edit')} />
           ) : (
-            <EditWorkspace songId={editingSongId} snapshot={snapshot} searchRequest={searchRequest} onSongId={setEditingSongId} />
+            <EditWorkspace snapshot={snapshot} selection={editSelection} searchRequest={searchRequest} onSelection={setEditSelection} />
           )}
         </>
       ) : (

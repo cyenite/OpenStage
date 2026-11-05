@@ -1404,28 +1404,245 @@ mark {
   gap: 8px;
 }
 
-.screen-preview {
+.screen-preview,
+.theme-preview {
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.theme-preview {
+  width: 100%;
+  max-width: 960px;
+  border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.3);
+}
+
+.inspector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.inspector-note {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.theme-grid,
+.theme-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.theme-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 4px;
+}
+
+.theme-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.theme-swatch {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  aspect-ratio: 16 / 9;
-  padding: 8%;
+  aspect-ratio: 16 / 10;
+  padding-bottom: 6px;
   border-radius: 8px;
-  background: #102033;
+  outline: 1px solid var(--line);
+  outline-offset: 2px;
+  font-size: 15px;
+}
+
+.theme-tile.is-selected .theme-swatch {
+  outline: 2px solid var(--accent);
+}
+
+.theme-swatch-band {
+  align-self: stretch;
+  padding: 1px 0;
   text-align: center;
-  white-space: pre-line;
 }
 
-.screen-main {
-  font: 500 14px/1.35 var(--serif);
-  color: #fff;
+.theme-tile-new .theme-swatch {
+  border: 1px dashed var(--line-strong);
+  outline: 0;
+  font-size: 18px;
+  color: var(--muted);
 }
 
-.screen-secondary {
-  font: italic 500 11px/1.35 var(--serif);
-  color: #f7e3b5;
+.theme-tile-name {
+  overflow: hidden;
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-soft);
+}
+
+.library-tabs button {
+  min-height: 26px;
+  padding: 0 12px;
+}
+
+.preview-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  font-size: 12px;
+}
+
+.preview-options label,
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.box-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 38px;
+  border-bottom: 1px solid var(--line);
+}
+
+.field-row-label {
+  flex: none;
+  color: var(--muted);
+}
+
+.field-row-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.inspector .segmented button {
+  flex: 1;
+  justify-content: center;
+  padding: 0 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.field-row .segmented button {
+  min-height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.color-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.color-field input {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: transparent;
+}
+
+.color-field input::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.color-field input::-webkit-color-swatch {
+  border: 0;
+  border-radius: 3px;
+}
+
+.color-hex {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.number-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.number-field input {
+  width: 62px;
+  min-height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--field);
+  font-size: 12px;
+  text-align: right;
+}
+
+.number-field input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.box-position-title {
+  margin-top: 12px;
+}
+
+.frame-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.frame-grid label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.theme-editor .editor-content {
+  align-items: center;
+}
+
+.theme-editor .editor-head,
+.theme-editor .preview-options {
+  align-self: stretch;
 }
 
 .detail-list {

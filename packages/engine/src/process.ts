@@ -26,7 +26,7 @@ export async function startEngineProcess(): Promise<void> {
   const store = new DocumentStore(join(dataDir, 'library'), { onError: report('a document') })
   const usage = new UsageLog(join(dataDir, 'usage.jsonl'), report('song usage'))
 
-  if (!(await store.exists())) await store.saveAll(starterLibrary)
+  await store.saveAll(starterLibrary, await store.missingKinds())
   const { library, problems } = await store.loadAll()
   for (const problem of problems) console.warn('[engine] library:', problem)
   const index = new LibraryIndex()

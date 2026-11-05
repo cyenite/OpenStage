@@ -86,3 +86,7 @@ domain hymns and the KJV and World English Bible. Planned bundled Bibles are KJV
 Takatifu 2015 (CC BY-SA 4.0, shipped as a separate data file with its notice). The Swahili Union Version
 and Biblia Habari Njema are copyrighted by the Bible Societies of Kenya and Tanzania and must not be
 bundled; churches can import Bible files they hold rights to.
+
+The fonts Inter (The Inter Project Authors) and Newsreader (The Newsreader Project Authors) are bundled
+through Fontsource under the SIL Open Font License 1.1, so slides look the same on every machine and
+offline. Their licence files ship with the `@fontsource-variable` packages.

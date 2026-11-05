@@ -26,9 +26,9 @@ describe('DocumentStore', () => {
   it('round-trips a whole library, one file per document', async () => {
     const root = join(await tempDir(), 'library')
     const { store, errors } = storeAt(root)
-    expect(await store.exists()).toBe(false)
+    expect(await store.missingKinds()).toHaveLength(7)
     await store.saveAll(starterLibrary)
-    expect(await store.exists()).toBe(true)
+    expect(await store.missingKinds()).toEqual([])
     expect((await readdir(join(root, 'songs'))).sort()).toEqual(['amazing-grace.json', 'it-is-well.json'])
     const { library, problems } = await store.loadAll()
     expect(library).toEqual(starterLibrary)
@@ -90,6 +90,25 @@ describe('DocumentStore', () => {
       'odd: File is not a valid services document',
       'renamed: Document id "other" did not match its file name; the file name wins',
     ])
+  })
+
+  it('seeds only the kinds a library has never had', async () => {
+    const root = await tempDir()
+    const { store } = storeAt(root)
+    await mkdir(join(root, 'songs'), { recursive: true })
+    await store.saveAll(starterLibrary, await store.missingKinds())
+    const { library } = await store.loadAll()
+    expect(Object.keys(library.songs)).toEqual([])
+    expect(Object.keys(library.themes)).toContain('classic')
+  })
+
+  it('fills in a theme missing boxes from the classic theme', async () => {
+    const root = await tempDir()
+    const { store } = storeAt(root)
+    await mkdir(join(root, 'themes'), { recursive: true })
+    await writeFile(join(root, 'themes', 'bare.json'), JSON.stringify({ id: 'bare', name: 'Bare', boxes: { main: { color: '#FF0000' } } }))
+    const { library } = await store.loadAll()
+    expect(library.themes.bare).toMatchObject({ fill: null, overrides: {}, boxes: { main: { color: '#FF0000', font: { family: 'newsreader' } }, reference: { align: 'center' } } })
   })
 
   it('upgrades songs saved with plain string lines', async () => {

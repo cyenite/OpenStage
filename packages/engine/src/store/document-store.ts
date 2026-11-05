@@ -44,11 +44,10 @@ export class DocumentStore {
     this.backupIntervalMs = options.backupIntervalMs ?? 5 * 60_000
   }
 
-  async exists(): Promise<boolean> {
-    return readdir(this.root).then(
-      () => true,
-      () => false,
-    )
+  /** Kinds with no folder yet: a new library, or one written before that kind existed. A folder emptied by the user is not missing. */
+  async missingKinds(): Promise<DocumentKind[]> {
+    const present = await Promise.all(documentKindKeys.map((kind) => readdir(join(this.root, kind)).then(() => true, () => false)))
+    return documentKindKeys.filter((_, index) => !present[index])
   }
 
   async loadAll(): Promise<{ library: Library; problems: LoadProblem[] }> {
@@ -85,8 +84,8 @@ export class DocumentStore {
     writer.save(document)
   }
 
-  async saveAll(library: Library): Promise<void> {
-    for (const kind of documentKindKeys) {
+  async saveAll(library: Library, kinds: DocumentKind[] = documentKindKeys): Promise<void> {
+    for (const kind of kinds) {
       for (const document of Object.values(library[kind])) this.save(kind, document)
     }
     await this.flush()

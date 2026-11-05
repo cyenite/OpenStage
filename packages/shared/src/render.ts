@@ -27,12 +27,16 @@ export interface TextBoxRender {
   align: TextAlign
   color: string
   hasShadow: boolean
+  /** A band painted behind the box, for lower-third looks; null paints nothing. */
+  backing: string | null
 }
 
 export type TextBoxRole = 'main' | 'secondary' | 'reference' | 'label' | 'next'
 
 export interface SlideRender {
   key: string
+  /** The theme's own background, drawn on the slide layer under the text; null lets the background layer show. */
+  fill: BackgroundRender | null
   boxes: TextBoxRender[]
 }
 

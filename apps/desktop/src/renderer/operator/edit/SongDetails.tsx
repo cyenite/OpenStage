@@ -1,18 +1,33 @@
 import { useState, type ReactNode } from 'react'
-import type { Arrangement, Song, SongEdit } from '@openstage/shared'
+import { classicTheme, lookup, type Arrangement, type DeckSlide, type Id, type Service, type Song, type SongEdit, type Theme } from '@openstage/shared'
+import { RenderView } from '../components/RenderView'
 import { CommitField } from './CommitField'
 import { commonLanguages, languageName } from './languages'
+import { previewBackground, previewRender } from './preview'
+import { ThemePicker } from './ThemePicker'
 
 interface SongDetailsProps {
   song: Song
+  themes: Theme[]
+  service: Service
   arrangement: Arrangement
   onEdit: (edit: SongEdit) => void
+  onOpenTheme: (themeId: Id) => void
 }
 
-export function SongDetails({ song, arrangement, onEdit }: SongDetailsProps) {
+export function SongDetails({ song, themes, service, arrangement, onEdit, onOpenTheme }: SongDetailsProps) {
   const [newLanguage, setNewLanguage] = useState('')
   const first = song.sections[arrangement.sectionIds[0] ?? '']?.slides[0]
   const secondary = song.languages[1]
+  const byId = Object.fromEntries(themes.map((t) => [t.id, t]))
+  const theme = lookup(byId, song.themeId) ?? lookup(byId, service.themeId) ?? lookup(byId, classicTheme.id) ?? classicTheme
+  const slide: DeckSlide = {
+    kind: 'verse',
+    label: '',
+    reference: '',
+    lines: first?.lines.map((l) => l.text) ?? ['No lyrics yet'],
+    secondaryLines: secondary ? first?.translations?.[secondary] ?? [] : [],
+  }
   const setLanguages = (languages: string[]) => onEdit({ type: 'song.setLanguages', languages })
   const addLanguage = (code: string) => {
     const cleaned = code.trim().toLowerCase()
@@ -24,11 +39,10 @@ export function SongDetails({ song, arrangement, onEdit }: SongDetailsProps) {
     <aside className="inspector" aria-label="Song details">
       <div className="inspector-block">
         <span className="panel-title">How it looks on screen</span>
-        <div className="screen-preview">
-          <span className="screen-main">{first?.lines.map((l) => l.text).join('\n') || 'No lyrics yet'}</span>
-          {secondary && first?.translations?.[secondary] && <span className="screen-secondary">{first.translations[secondary].join('\n')}</span>}
-        </div>
+        <RenderView className="screen-preview" render={previewRender(theme, slide, previewBackground)} />
       </div>
+
+      <ThemePicker themes={themes} themeId={song.themeId} serviceThemeId={service.themeId} onPick={(themeId) => onEdit({ type: 'song.setTheme', themeId })} onOpenTheme={onOpenTheme} />
 
       <div className="inspector-block">
         <span className="panel-title">Details</span>

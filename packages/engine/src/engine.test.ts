@@ -292,3 +292,35 @@ describe('Engine library', () => {
   })
 })
 
+describe('Engine themes', () => {
+  it('draws the song theme over the service theme, and falls back to classic', () => {
+    const engine = new Engine({ library: starterLibrary })
+    const projector = fakePort()
+    engine.connect(projector.port, { role: 'output', outputId: 'projector' })
+    engine.dispatch({ type: 'live.take' })
+    expect(projector.renders().at(-1)!.slide!.fill).toBeNull()
+    engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setTheme', themeId: 'paper' } })
+    expect(projector.renders().at(-1)!.slide).toMatchObject({ fill: { kind: 'color', color: '#F4EFE6' }, boxes: [{ color: '#1A1A1A' }] })
+    engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setTheme', themeId: 'gone' } })
+    expect(projector.renders().at(-1)!.slide!.fill).toBeNull()
+  })
+
+  it('updates the live slide when its theme is edited, and only deletes unused themes', () => {
+    const removed: string[] = []
+    const engine = new Engine({ library: starterLibrary, onDocumentRemove: (kind, id) => removed.push(`${kind}/${id}`) })
+    const projector = fakePort()
+    engine.connect(projector.port, { role: 'output', outputId: 'projector' })
+    engine.dispatch({ type: 'theme.create', themeId: 'mine', name: 'Mine', fromThemeId: 'ember' })
+    engine.dispatch({ type: 'service.edit', serviceId: 'sunday', edit: { type: 'service.setTheme', themeId: 'mine' } })
+    engine.dispatch({ type: 'live.take' })
+    engine.dispatch({ type: 'theme.edit', themeId: 'mine', edit: { type: 'theme.setBox', role: 'main', style: { color: '#00FF00' } } })
+    expect(projector.renders().at(-1)!.slide!.boxes[0]!.color).toBe('#00FF00')
+    expect(engine.snapshot().themeUses).toEqual({ mine: 1 })
+    engine.dispatch({ type: 'theme.delete', themeId: 'mine' })
+    engine.dispatch({ type: 'theme.delete', themeId: 'classic' })
+    engine.dispatch({ type: 'theme.delete', themeId: 'forest' })
+    expect(removed).toEqual(['themes/forest'])
+    expect(engine.snapshot().library.themes.map((t) => t.name)).toContain('Mine')
+  })
+})
+

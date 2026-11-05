@@ -1,4 +1,4 @@
-import { plainLine, type Library } from '@openstage/shared'
+import { plainLine, starterThemes, type Library } from '@openstage/shared'
 
 const plain = (...texts: string[]) => texts.map(plainLine)
 
@@ -117,6 +117,7 @@ export const starterLibrary: Library = {
     sunday: {
       id: 'sunday',
       name: 'Sunday Service',
+      themeId: 'classic',
       items: [
         { id: 'item-amazing-grace', type: 'song', songId: 'amazing-grace', arrangementId: 'sunday' },
         { id: 'item-john-3', type: 'scripture', passageId: 'john-3-16' },
@@ -136,4 +137,5 @@ export const starterLibrary: Library = {
     welcome: { id: 'welcome', title: 'Karibu · Welcome', subtitle: '[Church name]' },
   },
   audioCues: { 'walk-in': { id: 'walk-in', name: 'Walk-in music' } },
+  themes: Object.fromEntries(starterThemes.map((theme) => [theme.id, theme])),
 }

@@ -40,6 +40,7 @@ const describe: { [K in DocumentKind]: (document: DocumentTypes[K]) => Described
   backgrounds: (background) => ({ title: background.name, detail: '', body: [] }),
   lowerThirds: (lowerThird) => ({ title: lowerThird.title, detail: lowerThird.subtitle, body: [lowerThird.subtitle] }),
   audioCues: (cue) => ({ title: cue.name, detail: '', body: [] }),
+  themes: (theme) => ({ title: theme.name, detail: theme.fill ? 'Own background' : 'Over the background layer', body: [] }),
 }
 
 /**
