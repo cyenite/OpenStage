@@ -47,6 +47,10 @@ export async function startEngineProcess(): Promise<void> {
       store.save(kind, document)
       index.upsert(kind, document)
     },
+    onDocumentRemove: (kind, id) => {
+      index.remove(kind, id)
+      store.remove(kind, id).catch(report('a removed document'))
+    },
   })
 
   parentPort.on('message', (event) => {

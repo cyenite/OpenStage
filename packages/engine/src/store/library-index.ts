@@ -12,6 +12,7 @@ import {
 import type { UsageEntry } from './usage-log'
 
 export interface LibrarySearch {
+  list(kind: DocumentKind): SearchHit[]
   search(text: string, options?: { kind?: DocumentKind; limit?: number }): SearchHit[]
 }
 
@@ -22,17 +23,23 @@ export interface UsageRow {
 }
 
 const schema = `
-  create virtual table documents using fts5(kind unindexed, id unindexed, title, body, tokenize = 'unicode61 remove_diacritics 2');
+  create virtual table documents using fts5(kind unindexed, id unindexed, detail unindexed, title, body, tokenize = 'unicode61 remove_diacritics 2');
   create table usage (song_id text not null, service_id text not null, day text not null, at text not null, primary key (song_id, service_id, day));
 `
 
-const describe: { [K in DocumentKind]: (document: DocumentTypes[K]) => { title: string; body: string[] } } = {
-  songs: (song) => ({ title: song.title, body: [...song.meta.authors, ...songLines(song)] }),
-  passages: (passage) => ({ title: passage.reference, body: passage.verses.flatMap((v) => Object.values(v.text)) }),
-  services: (service) => ({ title: service.name, body: [] }),
-  backgrounds: (background) => ({ title: background.name, body: [] }),
-  lowerThirds: (lowerThird) => ({ title: lowerThird.title, body: [lowerThird.subtitle] }),
-  audioCues: (cue) => ({ title: cue.name, body: [] }),
+interface Described {
+  title: string
+  detail: string
+  body: string[]
+}
+
+const describe: { [K in DocumentKind]: (document: DocumentTypes[K]) => Described } = {
+  songs: (song) => ({ title: song.title, detail: song.meta.authors.join(', '), body: [...song.meta.authors, ...songLines(song)] }),
+  passages: (passage) => ({ title: passage.reference, detail: passage.translations.join(' + '), body: passage.verses.flatMap((v) => Object.values(v.text)) }),
+  services: (service) => ({ title: service.name, detail: `${service.items.length} items`, body: [] }),
+  backgrounds: (background) => ({ title: background.name, detail: '', body: [] }),
+  lowerThirds: (lowerThird) => ({ title: lowerThird.title, detail: lowerThird.subtitle, body: [lowerThird.subtitle] }),
+  audioCues: (cue) => ({ title: cue.name, detail: '', body: [] }),
 }
 
 /**
@@ -62,6 +69,16 @@ export class LibraryIndex implements LibrarySearch {
     })
   }
 
+  remove(kind: DocumentKind, id: Id): void {
+    this.db.prepare('delete from documents where kind = ? and id = ?').run(kind, id)
+  }
+
+  list(kind: DocumentKind): SearchHit[] {
+    if (!Object.hasOwn(documentKinds, kind)) return []
+    const rows = this.db.prepare(`select kind, id, title, detail, '' as snippet from documents where kind = ? order by title collate nocase`).all(kind)
+    return rows as unknown as SearchHit[]
+  }
+
   search(text: string, options: { kind?: DocumentKind; limit?: number } = {}): SearchHit[] {
     const match = toMatchQuery(text)
     if (!match) return []
@@ -69,9 +86,9 @@ export class LibraryIndex implements LibrarySearch {
     const kind = options.kind && Object.hasOwn(documentKinds, options.kind) ? options.kind : null
     const rows = this.db
       .prepare(
-        `select kind, id, title, snippet(documents, 3, char(1), char(2), '…', 10) as snippet
+        `select kind, id, title, detail, snippet(documents, 4, char(1), char(2), '…', 10) as snippet
          from documents where documents match ? and (? is null or kind = ?)
-         order by bm25(documents, 0, 0, 10, 1) limit ?`,
+         order by bm25(documents, 0, 0, 0, 10, 1) limit ?`,
       )
       .all(match, kind, kind, limit)
     return rows as unknown as SearchHit[]
@@ -98,8 +115,8 @@ export class LibraryIndex implements LibrarySearch {
   }
 
   private insert<K extends DocumentKind>(kind: K, document: DocumentTypes[K]): void {
-    const { title, body } = describe[kind](document)
-    this.db.prepare('insert into documents (kind, id, title, body) values (?, ?, ?, ?)').run(kind, document.id, title, body.join('\n'))
+    const { title, detail, body } = describe[kind](document)
+    this.db.prepare('insert into documents (kind, id, detail, title, body) values (?, ?, ?, ?, ?)').run(kind, document.id, detail, title, body.join('\n'))
   }
 
   private transaction(work: () => void): void {
@@ -116,7 +133,7 @@ export class LibraryIndex implements LibrarySearch {
 
 function songLines(song: Song): string[] {
   return Object.values(song.sections).flatMap((section) =>
-    section.slides.flatMap((slide) => [...slide.lines, ...Object.values(slide.translations ?? {}).flat()]),
+    section.slides.flatMap((slide) => [...slide.lines.map((line) => line.text), ...Object.values(slide.translations ?? {}).flat()]),
   )
 }
 

@@ -1,31 +1,11 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readdirSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
-
-const appDir = join(import.meta.dirname, '../apps/desktop')
-
-async function launch(userData: string) {
-  const app = await electron.launch({
-    args: [appDir, ...(process.env['OPENSTAGE_NO_SANDBOX'] ? ['--no-sandbox'] : [])],
-    env: { ...process.env, OPENSTAGE_USER_DATA: userData, OPENSTAGE_WINDOWED_OUTPUTS: '1' },
-  })
-  const find = async (fragment: string) => {
-    await expect.poll(() => app.windows().some((w) => w.url().includes(fragment)), { timeout: 15_000 }).toBe(true)
-    return app.windows().find((w) => w.url().includes(fragment))!
-  }
-  const operator = await find('operator.html')
-  const projector = await find('output=projector')
-  const stage = await find('output=stage')
-  await expect(operator.getByRole('button', { name: /Send to live/ })).toBeEnabled()
-  return { app, operator, projector, stage }
-}
-
-const mainText = (page: Page) => page.locator('.os-slide:last-child .os-box-main')
+import { expect, test, type ElectronApplication } from '@playwright/test'
+import { launch, mainText, tempUserData } from './app'
 
 test('the operator window drives both outputs through the engine', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'openstage-e2e-'))
+  const userData = tempUserData()
   let app: ElectronApplication | undefined
   try {
     const session = await launch(userData)
@@ -46,7 +26,7 @@ test('the operator window drives both outputs through the engine', async () => {
     await expect(mainText(projector)).toHaveText(/I once was lost/)
     await expect(operator.getByTestId('monitor-live')).toContainText('slide 2')
 
-    await operator.getByRole('button', { name: /John 3:16-17/ }).click()
+    await operator.getByRole('button', { name: /^BK John 3:16-17/ }).click()
     await operator.getByTestId('slide-0').dblclick()
     await expect(mainText(projector)).toHaveText(/only begotten Son/)
     await expect(projector.locator('.os-slide:last-child .os-box-secondary')).toHaveText(/one and only Son/)
@@ -67,7 +47,7 @@ test('the operator window drives both outputs through the engine', async () => {
 
     await operator.keyboard.press('Escape')
     await expect(projector.locator('.os-background')).toHaveCount(0)
-    await expect(operator.locator('.chip-in-sync')).toHaveCount(2)
+    await expect(operator.locator('.pill-in-sync')).toHaveCount(2)
 
     await operator.keyboard.press('Space')
     await expect(mainText(projector)).toHaveText(/God sent not his Son/)
@@ -85,7 +65,7 @@ test('the operator window drives both outputs through the engine', async () => {
 
 test('outputs keep their last frame and reconnect when the engine process dies', async () => {
   test.skip(process.platform !== 'linux', 'finds the engine process with pgrep')
-  const { app, operator, projector } = await launch(mkdtempSync(join(tmpdir(), 'openstage-e2e-')))
+  const { app, operator, projector } = await launch(tempUserData())
   try {
     await operator.keyboard.press('Space')
     await expect(mainText(projector)).toHaveText(/Amazing grace/)

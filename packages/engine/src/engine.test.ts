@@ -181,10 +181,11 @@ describe('Engine song edits', () => {
   it('updates the live output when the live slide is edited', () => {
     const { engine, projector, changes } = editing()
     engine.dispatch({ type: 'live.take' })
-    engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setSlideLines', sectionId: 'v1', index: 0, lines: ['Edited line'] } })
+    const text = 'Edited [G]line\n\nI once was lost, but now am found\nWas blind, but now I see'
+    engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setSectionText', sectionId: 'v1', language: null, text } })
     expect(projector.renders().at(-1)!.slide!.boxes[0]!.lines).toEqual(['Edited line'])
     expect(changes).toEqual(['songs/amazing-grace'])
-    expect(starterLibrary.songs['amazing-grace']!.sections.v1!.slides[0]!.lines[0]).toBe('Amazing grace, how sweet the sound')
+    expect(starterLibrary.songs['amazing-grace']!.sections.v1!.slides[0]!.lines[0]!.text).toBe('Amazing grace, how sweet the sound')
   })
 
   it('undoes and redoes edits in order and saves each step', () => {
@@ -209,7 +210,85 @@ describe('Engine song edits', () => {
     engine.dispatch({ type: 'song.edit', songId: 'missing', edit: { type: 'song.setTitle', title: 'X' } })
     engine.dispatch({ type: 'song.edit', songId: '__proto__', edit: { type: 'song.setTitle', title: 'X' } })
     engine.dispatch({ type: 'song.edit', songId: 'it-is-well', edit: { type: 'song.setMeta', meta: { tempo: -4 } } })
-    engine.dispatch({ type: 'song.edit', songId: 'it-is-well', edit: { type: 'song.setSlideLines', sectionId: 'v1', index: 9, lines: ['x'] } })
+    engine.dispatch({ type: 'song.edit', songId: 'it-is-well', edit: { type: 'song.setSectionText', sectionId: 'nope', language: null, text: 'x' } })
+    engine.dispatch({ type: 'song.edit', songId: 'it-is-well', edit: { type: 'song.setSectionText', sectionId: 'v1', language: 'sw', text: 'x' } })
     expect(changes).toEqual([])
   })
 })
+
+describe('Engine library', () => {
+  function connected() {
+    const removed: string[] = []
+    const changed: string[] = []
+    const index = new LibraryIndex()
+    index.rebuild(starterLibrary)
+    const engine = new Engine({
+      index,
+      library: starterLibrary,
+      onDocumentRemove: (kind, id) => removed.push(`${kind}/${id}`),
+      onDocumentChange: (kind, document) => {
+        changed.push(`${kind}/${document.id}`)
+        index.upsert(kind, document)
+      },
+    })
+    const operator = fakePort()
+    engine.connect(operator.port, { role: 'operator' })
+    const documents = () => operator.sent.filter((m) => m.type === 'document')
+    return { engine, operator, removed, changed, documents }
+  }
+
+  it('creates a song from pasted lyrics and lists it', () => {
+    const { engine, operator, changed } = connected()
+    engine.dispatch({ type: 'song.create', songId: 'karibu-1a2b', title: 'Karibu', lyrics: '[Kiitikio]\nKaribu Yesu\n\nKaribu sana', language: 'sw' })
+    expect(changed).toEqual(['songs/karibu-1a2b'])
+    const song = engine.documents.songs['karibu-1a2b']!
+    expect(song).toMatchObject({ title: 'Karibu', languages: ['sw'], arrangements: [{ id: 'default', sectionIds: ['s1'] }] })
+    expect(song.sections.s1).toMatchObject({ kind: 'chorus', label: 'Kiitikio' })
+    expect(song.sections.s1!.slides).toHaveLength(2)
+    operator.deliver({ type: 'query', requestId: 3, query: { type: 'library.list', kind: 'songs' } })
+    const result = operator.sent.findLast((m) => m.type === 'result')
+    expect(result?.type === 'result' && result.hits.map((h) => h.title)).toEqual(['Amazing Grace', 'It Is Well with My Soul', 'Karibu'])
+    expect(engine.snapshot().libraryRevision).toBe(1)
+  })
+
+  it('refuses a duplicate or unsafe id on create', () => {
+    const { engine, changed } = connected()
+    engine.dispatch({ type: 'song.create', songId: 'amazing-grace', title: 'X', lyrics: 'x', language: 'en' })
+    engine.dispatch({ type: 'song.create', songId: '../x', title: 'X', lyrics: 'x', language: 'en' })
+    expect(changed).toEqual([])
+  })
+
+  it('adds a song to the service with its first arrangement, and removes it again', () => {
+    const { engine } = connected()
+    engine.dispatch({ type: 'song.create', songId: 'new-song', title: 'New', lyrics: 'One\n\nTwo', language: 'en' })
+    engine.dispatch({ type: 'service.edit', serviceId: 'sunday', edit: { type: 'service.addSong', itemId: 'item-new', songId: 'new-song' } })
+    expect(engine.service.items.at(-1)).toEqual({ id: 'item-new', type: 'song', songId: 'new-song', arrangementId: 'default' })
+    expect(engine.snapshot().decks.at(-1)!.slides.map((s) => s.lines[0])).toEqual(['One', 'Two'])
+    engine.dispatch({ type: 'document.undo', ref: { kind: 'services', id: 'sunday' } })
+    expect(engine.service.items).toHaveLength(3)
+  })
+
+  it('deletes a song only when no service uses it', () => {
+    const { engine, removed } = connected()
+    engine.dispatch({ type: 'song.delete', songId: 'amazing-grace' })
+    expect(removed).toEqual([])
+    engine.dispatch({ type: 'service.edit', serviceId: 'sunday', edit: { type: 'service.removeItem', itemId: 'item-amazing-grace' } })
+    engine.dispatch({ type: 'song.delete', songId: 'amazing-grace' })
+    expect(removed).toEqual(['songs/amazing-grace'])
+    expect(engine.documents.songs['amazing-grace']).toBeUndefined()
+  })
+
+  it('pushes a watched document now and after each change, with undo state', () => {
+    const { engine, operator, documents } = connected()
+    operator.deliver({ type: 'watch', ref: { kind: 'songs', id: 'it-is-well' } })
+    expect(documents().at(-1)).toMatchObject({ document: { title: 'It Is Well with My Soul' }, canUndo: false })
+    engine.dispatch({ type: 'song.edit', songId: 'it-is-well', edit: { type: 'song.setTitle', title: 'Well' } })
+    expect(documents().at(-1)).toMatchObject({ document: { title: 'Well' }, canUndo: true, canRedo: false })
+    engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setTitle', title: 'Grace' } })
+    expect(documents()).toHaveLength(2)
+    operator.deliver({ type: 'watch', ref: null })
+    engine.dispatch({ type: 'song.edit', songId: 'it-is-well', edit: { type: 'song.setTitle', title: 'Again' } })
+    expect(documents()).toHaveLength(2)
+  })
+})
+

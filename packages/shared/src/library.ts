@@ -2,23 +2,36 @@ import type { BackgroundRender } from './render'
 
 export type Id = string
 
+/** Declaration order is display order. `aliases` are the heading words the lyrics parser recognises, Swahili included. */
 export const sectionKinds = [
-  { key: 'intro', label: 'Intro', color: '#8A8A92' },
-  { key: 'verse', label: 'Verse', color: '#5C9CFF' },
-  { key: 'preChorus', label: 'Pre-chorus', color: '#4FC1C9' },
-  { key: 'chorus', label: 'Chorus', color: '#F2A93B' },
-  { key: 'bridge', label: 'Bridge', color: '#E88AC2' },
-  { key: 'tag', label: 'Tag', color: '#7BD88F' },
-  { key: 'outro', label: 'Ending', color: '#C481FF' },
-  { key: 'scripture', label: 'Scripture', color: '#F7C978' },
-  { key: 'other', label: 'Other', color: '#A1A1A8' },
-] as const
+  { key: 'intro', label: 'Intro', color: '#8A8A92', aliases: ['intro'] },
+  { key: 'verse', label: 'Verse', color: '#5C9CFF', aliases: ['verse', 'stanza', 'ubeti'] },
+  { key: 'preChorus', label: 'Pre-chorus', color: '#4FC1C9', aliases: ['pre-chorus', 'prechorus', 'pre chorus'] },
+  { key: 'chorus', label: 'Chorus', color: '#F2A93B', aliases: ['chorus', 'refrain', 'kiitikio', 'korasi'] },
+  { key: 'bridge', label: 'Bridge', color: '#E88AC2', aliases: ['bridge'] },
+  { key: 'tag', label: 'Tag', color: '#7BD88F', aliases: ['tag'] },
+  { key: 'outro', label: 'Ending', color: '#C481FF', aliases: ['ending', 'outro', 'coda'] },
+  { key: 'scripture', label: 'Scripture', color: '#F7C978', aliases: [] },
+  { key: 'other', label: 'Other', color: '#A1A1A8', aliases: [] },
+] as const satisfies readonly { key: string; label: string; color: string; aliases: readonly string[] }[]
 
 export type SectionKind = (typeof sectionKinds)[number]['key']
 
+export interface Chord {
+  chord: string
+  /** Character offset into the line's text that the chord sits above. */
+  offset: number
+}
+
+export interface TextLine {
+  text: string
+  chords: Chord[]
+}
+
 export interface SlideContent {
-  lines: string[]
+  lines: TextLine[]
   notes?: string
+  /** Lines in other languages, keyed by language code, aligned line for line with `lines`. */
   translations?: Record<string, string[]>
 }
 
@@ -38,6 +51,8 @@ export interface Arrangement {
 export interface Song {
   id: Id
   title: string
+  /** Language codes; the first is the language of `lines`, the rest are keys of `translations` in display order. */
+  languages: string[]
   meta: { authors: string[]; copyright: string; ccli?: string; key?: string; tempo?: number }
   sections: Record<Id, Section>
   arrangements: Arrangement[]

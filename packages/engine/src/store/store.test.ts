@@ -92,9 +92,30 @@ describe('DocumentStore', () => {
     ])
   })
 
+  it('upgrades songs saved with plain string lines', async () => {
+    const root = await tempDir()
+    const { store } = storeAt(root)
+    await mkdir(join(root, 'songs'), { recursive: true })
+    const old = { id: 'old', title: 'Old', meta: { authors: ['A'], copyright: '' }, sections: { v: { id: 'v', kind: 'verse', label: 'V', slides: [{ lines: ['Hello'] }] } }, arrangements: [] }
+    await writeFile(join(root, 'songs', 'old.json'), JSON.stringify(old))
+    const { library } = await store.loadAll()
+    expect(library.songs.old).toMatchObject({ languages: ['en'], sections: { v: { slides: [{ lines: [{ text: 'Hello', chords: [] }] }] } } })
+  })
+
+  it('moves a removed document to the trash folder', async () => {
+    const root = await tempDir()
+    const { store } = storeAt(root)
+    await store.saveAll(starterLibrary)
+    await store.remove('songs', 'it-is-well')
+    expect(await readdir(join(root, 'songs'))).not.toContain('it-is-well.json')
+    expect(await readdir(join(root, '.trash', 'songs'))).toEqual([expect.stringMatching(/^it-is-well\.\d+\.json$/)])
+    expect((await store.loadAll()).library.songs['it-is-well']).toBeUndefined()
+  })
+
   it('refuses ids that could escape the library folder', async () => {
     const { store } = storeAt(await tempDir())
     expect(() => store.save('songs', { ...grace, id: '../evil' })).toThrow(/unsafe id/)
+    await expect(store.remove('songs', '../evil')).rejects.toThrow(/unsafe id/)
   })
 })
 
@@ -108,6 +129,7 @@ describe('LibraryIndex', () => {
     expect(index.search('GRÂCE', { kind: 'songs' }).map((h) => h.id)).toEqual(['amazing-grace'])
     expect(index.search('loved world').map((h) => h.id)).toEqual(['john-3-16'])
     expect(index.search('candle').map((h) => h.kind)).toEqual(['backgrounds'])
+    expect(index.search('grace', { kind: 'songs' })[0]!.detail).toBe('John Newton')
   })
 
   it('marks matched words in the snippet', () => {

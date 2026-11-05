@@ -1,12 +1,15 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, screen, type BrowserWindowConstructorOptions } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, screen, type BrowserWindowConstructorOptions } from 'electron'
 import { outputs, type OutputProfile } from '@openstage/engine'
 import { EngineHost } from './engine-host'
 
 if (process.env['OPENSTAGE_USER_DATA']) app.setPath('userData', process.env['OPENSTAGE_USER_DATA'])
 
 const engine = new EngineHost()
+const isMac = process.platform === 'darwin'
 const forceWindowedOutputs = process.env['OPENSTAGE_WINDOWED_OUTPUTS'] === '1'
+const titleBarColor = () => (nativeTheme.shouldUseDarkColors ? '#1C1C1F' : '#ECECEE')
+const themeSources = ['system', 'light', 'dark'] as const
 
 const webPreferences: BrowserWindowConstructorOptions['webPreferences'] = {
   preload: join(__dirname, '../preload/index.js'),
@@ -24,6 +27,10 @@ function load(window: BrowserWindow, page: 'operator' | 'output', query: Record<
   }
 }
 
+/**
+ * The toolbar is the title bar, as in the design: macOS keeps its own traffic lights inset into it,
+ * everywhere else the window is frameless and the page draws matching ones.
+ */
 function createOperatorWindow(): BrowserWindow {
   const window = new BrowserWindow({
     title: 'OpenStage',
@@ -31,13 +38,37 @@ function createOperatorWindow(): BrowserWindow {
     height: 900,
     minWidth: 1024,
     minHeight: 640,
-    backgroundColor: '#0E0E10',
+    titleBarStyle: 'hidden',
+    ...(isMac ? { trafficLightPosition: { x: 18, y: 20 } } : { frame: false }),
+    backgroundColor: titleBarColor(),
     webPreferences,
   })
+  const sendState = () => {
+    if (window.isDestroyed()) return
+    const state = { isFocused: window.isFocused(), isMaximized: window.isMaximized(), isFullScreen: window.isFullScreen() }
+    window.webContents.send('window-state', state)
+  }
+  for (const event of ['focus', 'blur', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen'] as const) window.on(event as 'focus', sendState)
+  window.webContents.on('did-finish-load', sendState)
   engine.attach(window.webContents, { role: 'operator' })
   load(window, 'operator')
   window.on('closed', () => app.quit())
   return window
+}
+
+function handleWindowRequests(): void {
+  ipcMain.on('window', (event, action: unknown) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    if (!window) return
+    if (action === 'close') window.close()
+    else if (action === 'minimize') window.minimize()
+    else if (action === 'toggle-maximize') window.isMaximized() ? window.unmaximize() : window.maximize()
+  })
+  ipcMain.on('theme', (event, source: unknown) => {
+    if (!themeSources.includes(source as (typeof themeSources)[number])) return
+    nativeTheme.themeSource = source as (typeof themeSources)[number]
+    BrowserWindow.fromWebContents(event.sender)?.setBackgroundColor(titleBarColor())
+  })
 }
 
 /**
@@ -79,6 +110,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     engine.start()
+    handleWindowRequests()
     const operator = createOperatorWindow()
     outputs.forEach((profile, index) => createOutputWindow(profile, index))
     operator.focus()

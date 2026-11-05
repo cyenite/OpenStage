@@ -10,6 +10,7 @@ class EngineClient {
   hello: ClientHello | null = null
   private port: MessagePort | null = null
   private readonly listeners = new Set<Listener>()
+  private readonly connectListeners = new Set<() => void>()
 
   constructor() {
     window.addEventListener('message', (event) => {
@@ -18,11 +19,18 @@ class EngineClient {
       this.hello = event.data.hello
       this.port = event.ports[0]
       this.port.onmessage = (message) => this.listeners.forEach((listener) => listener(message.data))
+      this.connectListeners.forEach((listener) => listener())
     })
   }
 
   send(message: ClientMessage): void {
     this.port?.postMessage(message)
+  }
+
+  /** Runs after every new port, including the first, so per-client requests can be re-sent after an engine restart. */
+  onConnect(listener: () => void): () => void {
+    this.connectListeners.add(listener)
+    return () => this.connectListeners.delete(listener)
   }
 
   subscribe(listener: Listener): () => void {

@@ -23,12 +23,15 @@ function buildDeck(item: ServiceItem, library: Library): Deck {
   const song = lookup(library.songs, item.songId)
   if (!song) return { itemId: item.id, title: 'Missing song', subtitle: item.songId, slides: [] }
   const arrangement = song.arrangements.find((a) => a.id === item.arrangementId) ?? song.arrangements[0]
+  const secondary = song.languages[1]
   const slides: DeckSlide[] = []
   for (const sectionId of arrangement?.sectionIds ?? []) {
     const section = lookup(song.sections, sectionId)
     if (!section) continue
     for (const slide of section.slides) {
-      slides.push({ kind: section.kind, label: section.label, lines: slide.lines, reference: '', secondaryLines: [] })
+      const lines = slide.lines.map((line) => line.text)
+      const secondaryLines = secondary ? slide.translations?.[secondary] ?? [] : []
+      slides.push({ kind: section.kind, label: section.label, lines, reference: '', secondaryLines })
     }
   }
   const subtitle = [song.meta.authors.join(', '), song.meta.copyright, `Arrangement: ${arrangement?.name ?? 'none'}`]

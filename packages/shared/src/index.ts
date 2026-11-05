@@ -1,4 +1,7 @@
+export * from './chords'
+export * from './ids'
 export * from './layers'
 export * from './library'
+export * from './lyrics'
 export * from './protocol'
 export * from './render'

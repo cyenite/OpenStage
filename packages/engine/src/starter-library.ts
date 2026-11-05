@@ -1,4 +1,6 @@
-import type { Library } from '@openstage/shared'
+import { plainLine, type Library } from '@openstage/shared'
+
+const plain = (...texts: string[]) => texts.map(plainLine)
 
 /**
  * Written into an empty library on first start. All public domain: hymns by John Newton (1779)
@@ -9,6 +11,7 @@ export const starterLibrary: Library = {
     'amazing-grace': {
       id: 'amazing-grace',
       title: 'Amazing Grace',
+      languages: ['en'],
       meta: { authors: ['John Newton'], copyright: 'Public domain' },
       sections: {
         v1: {
@@ -16,8 +19,8 @@ export const starterLibrary: Library = {
           kind: 'verse',
           label: 'Verse 1',
           slides: [
-            { lines: ['Amazing grace, how sweet the sound', 'That saved a wretch like me'] },
-            { lines: ['I once was lost, but now am found', 'Was blind, but now I see'] },
+            { lines: plain('Amazing grace, how sweet the sound', 'That saved a wretch like me') },
+            { lines: plain('I once was lost, but now am found', 'Was blind, but now I see') },
           ],
         },
         v2: {
@@ -25,8 +28,8 @@ export const starterLibrary: Library = {
           kind: 'verse',
           label: 'Verse 2',
           slides: [
-            { lines: ['’Twas grace that taught my heart to fear', 'And grace my fears relieved'] },
-            { lines: ['How precious did that grace appear', 'The hour I first believed'] },
+            { lines: plain('’Twas grace that taught my heart to fear', 'And grace my fears relieved') },
+            { lines: plain('How precious did that grace appear', 'The hour I first believed') },
           ],
         },
         v3: {
@@ -34,8 +37,8 @@ export const starterLibrary: Library = {
           kind: 'verse',
           label: 'Verse 3',
           slides: [
-            { lines: ['Through many dangers, toils and snares', 'I have already come'] },
-            { lines: ['’Tis grace hath brought me safe thus far', 'And grace will lead me home'] },
+            { lines: plain('Through many dangers, toils and snares', 'I have already come') },
+            { lines: plain('’Tis grace hath brought me safe thus far', 'And grace will lead me home') },
           ],
         },
         end: {
@@ -43,8 +46,8 @@ export const starterLibrary: Library = {
           kind: 'outro',
           label: 'Verse 4',
           slides: [
-            { lines: ['When we’ve been there ten thousand years', 'Bright shining as the sun'] },
-            { lines: ['We’ve no less days to sing God’s praise', 'Than when we’d first begun'] },
+            { lines: plain('When we’ve been there ten thousand years', 'Bright shining as the sun') },
+            { lines: plain('We’ve no less days to sing God’s praise', 'Than when we’d first begun') },
           ],
         },
       },
@@ -56,6 +59,7 @@ export const starterLibrary: Library = {
     'it-is-well': {
       id: 'it-is-well',
       title: 'It Is Well with My Soul',
+      languages: ['en'],
       meta: { authors: ['Horatio Spafford'], copyright: 'Public domain' },
       sections: {
         v1: {
@@ -63,23 +67,23 @@ export const starterLibrary: Library = {
           kind: 'verse',
           label: 'Verse 1',
           slides: [
-            { lines: ['When peace like a river attendeth my way', 'When sorrows like sea billows roll'] },
-            { lines: ['Whatever my lot, Thou hast taught me to say', 'It is well, it is well with my soul'] },
+            { lines: plain('When peace like a river attendeth my way', 'When sorrows like sea billows roll') },
+            { lines: plain('Whatever my lot, Thou hast taught me to say', 'It is well, it is well with my soul') },
           ],
         },
         chorus: {
           id: 'chorus',
           kind: 'chorus',
           label: 'Chorus',
-          slides: [{ lines: ['It is well with my soul', 'It is well, it is well with my soul'] }],
+          slides: [{ lines: plain('It is well with my soul', 'It is well, it is well with my soul') }],
         },
         v2: {
           id: 'v2',
           kind: 'verse',
           label: 'Verse 2',
           slides: [
-            { lines: ['Though Satan should buffet, though trials should come', 'Let this blest assurance control'] },
-            { lines: ['That Christ has regarded my helpless estate', 'And hath shed His own blood for my soul'] },
+            { lines: plain('Though Satan should buffet, though trials should come', 'Let this blest assurance control') },
+            { lines: plain('That Christ has regarded my helpless estate', 'And hath shed His own blood for my soul') },
           ],
         },
       },

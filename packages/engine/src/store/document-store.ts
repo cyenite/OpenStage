@@ -1,8 +1,9 @@
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { documentKindKeys, type DocumentKind, type DocumentTypes, type Id, type Library } from '@openstage/shared'
+import { documentKindKeys, isSafeId, type DocumentKind, type DocumentTypes, type Id, type Library } from '@openstage/shared'
 import { atomicWriteJson, CoalescingWriter } from '../persistence'
-import { isSafeId, isValidDocument } from './validate'
+import { upgradeDocument } from './upgrade'
+import { isValidDocument } from './validate'
 
 export interface LoadProblem {
   kind: DocumentKind
@@ -66,7 +67,7 @@ export class DocumentStore {
         if (loaded.problem) problems.push({ kind, id, ...loaded.problem })
         if (!loaded.document) continue
         if (loaded.document.id !== id) problems.push({ kind, id, reason: `Document id "${loaded.document.id}" did not match its file name; the file name wins` })
-        ;(library[kind] as Record<Id, unknown>)[id] = { ...loaded.document, id }
+        ;(library[kind] as Record<Id, unknown>)[id] = upgradeDocument(kind, { ...loaded.document, id })
       }
     }
     return { library, problems }
@@ -89,6 +90,19 @@ export class DocumentStore {
       for (const document of Object.values(library[kind])) this.save(kind, document)
     }
     await this.flush()
+  }
+
+  /** Moves the file to `.trash` rather than deleting it; its backups stay where they are. */
+  async remove(kind: DocumentKind, id: Id): Promise<void> {
+    if (!isSafeId(id)) throw new Error(`Refusing to remove ${kind} with unsafe id ${JSON.stringify(id)}`)
+    const key = `${kind}/${id}`
+    await this.writers.get(key)?.flush()
+    this.writers.delete(key)
+    const trash = join(this.root, '.trash', kind)
+    await mkdir(trash, { recursive: true })
+    await rename(this.path(kind, id), join(trash, `${id}.${String(this.now()).padStart(15, '0')}.json`)).catch((error) => {
+      if (error?.code !== 'ENOENT') throw error
+    })
   }
 
   async flush(): Promise<void> {
