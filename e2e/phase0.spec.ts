@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
@@ -31,6 +31,7 @@ test('the operator window drives both outputs through the engine', async () => {
     const session = await launch(userData)
     app = session.app
     const { operator, projector, stage } = session
+    expect(readdirSync(join(userData, 'library', 'songs')).sort()).toEqual(['amazing-grace.json', 'it-is-well.json'])
 
     await expect(projector.locator('.os-background')).toHaveCount(1)
     await expect(projector.locator('.os-slide')).toHaveCount(0)

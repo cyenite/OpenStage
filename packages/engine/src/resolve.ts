@@ -65,12 +65,8 @@ export function resolveRender(
   const shows = (layer: LayerKey) => (profile.layers as readonly LayerKey[]).includes(layer)
   const slide = shows('slide') ? findSlide(context.decks, slideRef) : null
   const next = slideRef === state.live.slide ? findSlide(context.decks, state.preview) : null
-  const background = shows('background')
-    ? context.library.backgrounds.find((b) => b.id === state.live.background)?.render ?? null
-    : null
-  const lowerThird = shows('lowerThird')
-    ? context.library.lowerThirds.find((l) => l.id === state.live.lowerThird) ?? null
-    : null
+  const background = shows('background') && state.live.background ? context.library.backgrounds[state.live.background]?.render ?? null : null
+  const lowerThird = shows('lowerThird') && state.live.lowerThird ? context.library.lowerThirds[state.live.lowerThird] ?? null : null
 
   return {
     aspect: 16 / 9,

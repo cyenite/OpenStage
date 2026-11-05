@@ -30,7 +30,7 @@ Each step lands in a working app; nothing waits for the end.
 
 ### 1. Document store
 - One JSON file per document named by id, written atomically (the phase 0 helper), with a rolling
-  backup per file. A SQLite index (better-sqlite3 in the engine) for titles, full-text lyrics search
+  backup per file. A SQLite index (Node's built-in `node:sqlite` in the engine) for titles, full-text lyrics search
   and usage history for CCLI reports. The index can always be rebuilt from the files.
 - Command-log undo per open document, not snapshots.
 - Library replaces the demo data; the engine's `Library` type grows into the blueprint 4.3 model.

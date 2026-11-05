@@ -1,4 +1,4 @@
-import type { Deck, DeckSlide, Library, Service, ServiceItem, SlideRef } from '@openstage/shared'
+import { lookup, type Deck, type DeckSlide, type Library, type Service, type ServiceItem, type SlideRef } from '@openstage/shared'
 
 export function buildDecks(service: Service, library: Library): Deck[] {
   return service.items.map((item) => buildDeck(item, library))
@@ -6,7 +6,7 @@ export function buildDecks(service: Service, library: Library): Deck[] {
 
 function buildDeck(item: ServiceItem, library: Library): Deck {
   if (item.type === 'scripture') {
-    const passage = library.passages[item.passageId]
+    const passage = lookup(library.passages, item.passageId)
     if (!passage) return { itemId: item.id, title: 'Missing passage', subtitle: item.passageId, slides: [] }
     const [main = '', secondary] = passage.translations
     const book = passage.reference.replace(/:.*$/, '')
@@ -20,12 +20,12 @@ function buildDeck(item: ServiceItem, library: Library): Deck {
     return { itemId: item.id, title: passage.reference, subtitle: passage.translations.join(' + '), slides }
   }
 
-  const song = library.songs[item.songId]
+  const song = lookup(library.songs, item.songId)
   if (!song) return { itemId: item.id, title: 'Missing song', subtitle: item.songId, slides: [] }
   const arrangement = song.arrangements.find((a) => a.id === item.arrangementId) ?? song.arrangements[0]
   const slides: DeckSlide[] = []
   for (const sectionId of arrangement?.sectionIds ?? []) {
-    const section = song.sections[sectionId]
+    const section = lookup(song.sections, sectionId)
     if (!section) continue
     for (const slide of section.slides) {
       slides.push({ kind: section.kind, label: section.label, lines: slide.lines, reference: '', secondaryLines: [] })

@@ -38,7 +38,7 @@ export interface Arrangement {
 export interface Song {
   id: Id
   title: string
-  meta: { authors: string[]; copyright: string }
+  meta: { authors: string[]; copyright: string; ccli?: string; key?: string; tempo?: number }
   sections: Record<Id, Section>
   arrangements: Arrangement[]
 }
@@ -78,12 +78,39 @@ export interface AudioCue {
   name: string
 }
 
-export interface Library {
-  songs: Record<Id, Song>
-  passages: Record<Id, ScripturePassage>
-  backgrounds: Background[]
-  lowerThirds: LowerThird[]
-  audioCues: AudioCue[]
+/** Every kind of document the store keeps, one JSON file each. The key is also the folder name on disk. */
+export interface DocumentTypes {
+  songs: Song
+  passages: ScripturePassage
+  services: Service
+  backgrounds: Background
+  lowerThirds: LowerThird
+  audioCues: AudioCue
+}
+
+export type DocumentKind = keyof DocumentTypes
+
+export const documentKinds = {
+  songs: { label: 'Songs' },
+  passages: { label: 'Scripture passages' },
+  services: { label: 'Services' },
+  backgrounds: { label: 'Backgrounds' },
+  lowerThirds: { label: 'Lower thirds' },
+  audioCues: { label: 'Audio cues' },
+} as const satisfies Record<DocumentKind, { label: string }>
+
+export const documentKindKeys = Object.keys(documentKinds) as DocumentKind[]
+
+export interface DocumentRef {
+  kind: DocumentKind
+  id: Id
+}
+
+export type Library = { [K in DocumentKind]: Record<Id, DocumentTypes[K]> }
+
+/** Ids come from files and the wire, so never let one like `__proto__` reach the prototype. */
+export function lookup<T>(records: Record<Id, T>, id: Id | null | undefined): T | undefined {
+  return id != null && Object.hasOwn(records, id) ? records[id] : undefined
 }
 
 /** A service item flattened into the slides an operator steps through. */

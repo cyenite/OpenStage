@@ -1,10 +1,11 @@
-import type { Command, Deck, EngineState, LiveLayers, SlideRef } from '@openstage/shared'
+import type { Command, Deck, EngineState, Id, Library, LiveLayers, SlideRef } from '@openstage/shared'
 
 export const emptyLive: LiveLayers = { slide: null, audio: null, background: null, lowerThird: null }
 
-export function initialState(decks: Deck[], defaultBackgroundId: string | null): EngineState {
+export function initialState(decks: Deck[], defaultBackgroundId: Id | null, serviceId: Id | null): EngineState {
   const first = decks.find((d) => d.slides.length > 0)
   return {
+    serviceId,
     preview: first ? { itemId: first.itemId, index: 0 } : null,
     selectedItemId: first?.itemId ?? null,
     live: { ...emptyLive, background: defaultBackgroundId },
@@ -64,6 +65,23 @@ function step(decks: Deck[], ref: SlideRef, delta: 1 | -1): SlideRef | null {
   if (delta < 0) return null
   const following = decks.slice(deckIndex + 1).find((d) => d.slides.length > 0)
   return following ? { itemId: following.itemId, index: 0 } : null
+}
+
+/** Drops every reference that no longer points at real content, after a restore or a library edit. */
+export function sanitize(raw: Partial<EngineState>, decks: Deck[], library: Library): EngineState {
+  const live = { ...emptyLive, ...raw.live }
+  const pick = (records: Record<Id, unknown>, id: Id | null) => (id && Object.hasOwn(records, id) ? id : null)
+  return {
+    serviceId: pick(library.services, raw.serviceId ?? null),
+    preview: isValid(decks, raw.preview ?? null) ? raw.preview! : null,
+    selectedItemId: decks.some((d) => d.itemId === raw.selectedItemId) ? raw.selectedItemId! : null,
+    live: {
+      slide: isValid(decks, live.slide) ? live.slide : null,
+      audio: pick(library.audioCues, live.audio),
+      background: pick(library.backgrounds, live.background),
+      lowerThird: pick(library.lowerThirds, live.lowerThird),
+    },
+  }
 }
 
 export function isValid(decks: Deck[], ref: SlideRef | null): ref is SlideRef {

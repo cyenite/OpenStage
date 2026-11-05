@@ -1,10 +1,10 @@
-import type { Library, Service } from '@openstage/shared'
+import type { Library } from '@openstage/shared'
 
 /**
- * Phase 0 content, all public domain: hymns by John Newton (1779) and Horatio Spafford (1873),
- * scripture from the KJV and the World English Bible.
+ * Written into an empty library on first start. All public domain: hymns by John Newton (1779)
+ * and Horatio Spafford (1873), scripture from the KJV and the World English Bible.
  */
-export const demoLibrary: Library = {
+export const starterLibrary: Library = {
   songs: {
     'amazing-grace': {
       id: 'amazing-grace',
@@ -109,26 +109,27 @@ export const demoLibrary: Library = {
       ],
     },
   },
-  backgrounds: [
-    { id: 'night-blue', name: 'Night blue', render: { kind: 'color', color: '#102033' } },
-    { id: 'slow-clouds', name: 'Slow clouds', render: { kind: 'gradient', from: '#22324A', to: '#0B1220', angle: 160 } },
-    { id: 'candle', name: 'Candle', render: { kind: 'gradient', from: '#4A2E14', to: '#140C06', angle: 180 } },
-    { id: 'forest-light', name: 'Forest light', render: { kind: 'gradient', from: '#1D3A26', to: '#08120C', angle: 200 } },
-    { id: 'plum-still', name: 'Plum still', render: { kind: 'color', color: '#1B1430' } },
-  ],
-  lowerThirds: [
-    { id: 'pastor', title: '[Pastor name]', subtitle: 'Senior pastor' },
-    { id: 'welcome', title: 'Karibu · Welcome', subtitle: '[Church name]' },
-  ],
-  audioCues: [{ id: 'walk-in', name: 'Walk-in music' }],
-}
-
-export const demoService: Service = {
-  id: 'sunday',
-  name: 'Sunday Service',
-  items: [
-    { id: 'item-amazing-grace', type: 'song', songId: 'amazing-grace', arrangementId: 'sunday' },
-    { id: 'item-john-3', type: 'scripture', passageId: 'john-3-16' },
-    { id: 'item-it-is-well', type: 'song', songId: 'it-is-well', arrangementId: 'sunday' },
-  ],
+  services: {
+    sunday: {
+      id: 'sunday',
+      name: 'Sunday Service',
+      items: [
+        { id: 'item-amazing-grace', type: 'song', songId: 'amazing-grace', arrangementId: 'sunday' },
+        { id: 'item-john-3', type: 'scripture', passageId: 'john-3-16' },
+        { id: 'item-it-is-well', type: 'song', songId: 'it-is-well', arrangementId: 'sunday' },
+      ],
+    },
+  },
+  backgrounds: {
+    'night-blue': { id: 'night-blue', name: 'Night blue', render: { kind: 'color', color: '#102033' } },
+    'slow-clouds': { id: 'slow-clouds', name: 'Slow clouds', render: { kind: 'gradient', from: '#22324A', to: '#0B1220', angle: 160 } },
+    candle: { id: 'candle', name: 'Candle', render: { kind: 'gradient', from: '#4A2E14', to: '#140C06', angle: 180 } },
+    'forest-light': { id: 'forest-light', name: 'Forest light', render: { kind: 'gradient', from: '#1D3A26', to: '#08120C', angle: 200 } },
+    'plum-still': { id: 'plum-still', name: 'Plum still', render: { kind: 'color', color: '#1B1430' } },
+  },
+  lowerThirds: {
+    pastor: { id: 'pastor', title: '[Pastor name]', subtitle: 'Senior pastor' },
+    welcome: { id: 'welcome', title: 'Karibu · Welcome', subtitle: '[Church name]' },
+  },
+  audioCues: { 'walk-in': { id: 'walk-in', name: 'Walk-in music' } },
 }
