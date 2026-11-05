@@ -1,0 +1,41 @@
+import type { Deck, DeckSlide, Library, Service, ServiceItem, SlideRef } from '@openstage/shared'
+
+export function buildDecks(service: Service, library: Library): Deck[] {
+  return service.items.map((item) => buildDeck(item, library))
+}
+
+function buildDeck(item: ServiceItem, library: Library): Deck {
+  if (item.type === 'scripture') {
+    const passage = library.passages[item.passageId]
+    if (!passage) return { itemId: item.id, title: 'Missing passage', subtitle: item.passageId, slides: [] }
+    const [main = '', secondary] = passage.translations
+    const book = passage.reference.replace(/:.*$/, '')
+    const slides: DeckSlide[] = passage.verses.map((verse) => ({
+      kind: 'scripture',
+      label: `Verse ${verse.number}`,
+      lines: [verse.text[main] ?? ''],
+      reference: `${book}:${verse.number} ${passage.translations.join(' · ')}`,
+      secondaryLines: secondary ? [verse.text[secondary] ?? ''] : [],
+    }))
+    return { itemId: item.id, title: passage.reference, subtitle: passage.translations.join(' + '), slides }
+  }
+
+  const song = library.songs[item.songId]
+  if (!song) return { itemId: item.id, title: 'Missing song', subtitle: item.songId, slides: [] }
+  const arrangement = song.arrangements.find((a) => a.id === item.arrangementId) ?? song.arrangements[0]
+  const slides: DeckSlide[] = []
+  for (const sectionId of arrangement?.sectionIds ?? []) {
+    const section = song.sections[sectionId]
+    if (!section) continue
+    for (const slide of section.slides) {
+      slides.push({ kind: section.kind, label: section.label, lines: slide.lines, reference: '', secondaryLines: [] })
+    }
+  }
+  const subtitle = [song.meta.authors.join(', '), song.meta.copyright, `Arrangement: ${arrangement?.name ?? 'none'}`]
+  return { itemId: item.id, title: song.title, subtitle: subtitle.join(' · '), slides }
+}
+
+export function findSlide(decks: Deck[], ref: SlideRef | null): DeckSlide | null {
+  if (!ref) return null
+  return decks.find((d) => d.itemId === ref.itemId)?.slides[ref.index] ?? null
+}

@@ -1,0 +1,22 @@
+node_modules/
+out/
+dist/
+release/
+*.tsbuildinfo
+.vite/
+coverage/
+test-results/
+playwright-report/
+.DS_Store
+.env
+.env.*
+
+# Flutter (apps/mobile)
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+
+# Personal notes, not team docs
+.docs/
+CLAUDE.local.md

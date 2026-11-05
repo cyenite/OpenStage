@@ -1,0 +1,27 @@
+{
+  "name": "@openstage/desktop",
+  "private": true,
+  "version": "0.0.0",
+  "description": "OpenStage operator app: Electron main process, engine host, operator and output windows",
+  "license": "GPL-3.0-or-later",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc -p tsconfig.node.json && tsc -p tsconfig.web.json"
+  },
+  "devDependencies": {
+    "@openstage/engine": "workspace:*",
+    "@openstage/output": "workspace:*",
+    "@openstage/shared": "workspace:*",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.1.2",
+    "electron": "44.9.0",
+    "electron-vite": "6.0.0",
+    "react": "19.2.9",
+    "react-dom": "19.2.9",
+    "vite": "8.3.4"
+  }
+}

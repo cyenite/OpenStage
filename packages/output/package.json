@@ -1,0 +1,17 @@
+{
+  "name": "@openstage/output",
+  "private": true,
+  "version": "0.0.0",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./output.css": "./src/output.css"
+  },
+  "scripts": {
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@openstage/shared": "workspace:*"
+  }
+}

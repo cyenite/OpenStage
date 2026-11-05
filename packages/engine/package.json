@@ -1,0 +1,17 @@
+{
+  "name": "@openstage/engine",
+  "private": true,
+  "version": "0.0.0",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./process": "./src/process.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@openstage/shared": "workspace:*"
+  }
+}

@@ -1,0 +1,7 @@
+packages:
+  - apps/desktop
+  - packages/*
+
+onlyBuiltDependencies:
+  - electron
+  - esbuild

@@ -1,0 +1,134 @@
+import type { Library, Service } from '@openstage/shared'
+
+/**
+ * Phase 0 content, all public domain: hymns by John Newton (1779) and Horatio Spafford (1873),
+ * scripture from the KJV and the World English Bible.
+ */
+export const demoLibrary: Library = {
+  songs: {
+    'amazing-grace': {
+      id: 'amazing-grace',
+      title: 'Amazing Grace',
+      meta: { authors: ['John Newton'], copyright: 'Public domain' },
+      sections: {
+        v1: {
+          id: 'v1',
+          kind: 'verse',
+          label: 'Verse 1',
+          slides: [
+            { lines: ['Amazing grace, how sweet the sound', 'That saved a wretch like me'] },
+            { lines: ['I once was lost, but now am found', 'Was blind, but now I see'] },
+          ],
+        },
+        v2: {
+          id: 'v2',
+          kind: 'verse',
+          label: 'Verse 2',
+          slides: [
+            { lines: ['’Twas grace that taught my heart to fear', 'And grace my fears relieved'] },
+            { lines: ['How precious did that grace appear', 'The hour I first believed'] },
+          ],
+        },
+        v3: {
+          id: 'v3',
+          kind: 'verse',
+          label: 'Verse 3',
+          slides: [
+            { lines: ['Through many dangers, toils and snares', 'I have already come'] },
+            { lines: ['’Tis grace hath brought me safe thus far', 'And grace will lead me home'] },
+          ],
+        },
+        end: {
+          id: 'end',
+          kind: 'outro',
+          label: 'Verse 4',
+          slides: [
+            { lines: ['When we’ve been there ten thousand years', 'Bright shining as the sun'] },
+            { lines: ['We’ve no less days to sing God’s praise', 'Than when we’d first begun'] },
+          ],
+        },
+      },
+      arrangements: [
+        { id: 'sunday', name: 'Sunday', sectionIds: ['v1', 'v2', 'v3', 'end'] },
+        { id: 'short', name: 'Short', sectionIds: ['v1', 'end'] },
+      ],
+    },
+    'it-is-well': {
+      id: 'it-is-well',
+      title: 'It Is Well with My Soul',
+      meta: { authors: ['Horatio Spafford'], copyright: 'Public domain' },
+      sections: {
+        v1: {
+          id: 'v1',
+          kind: 'verse',
+          label: 'Verse 1',
+          slides: [
+            { lines: ['When peace like a river attendeth my way', 'When sorrows like sea billows roll'] },
+            { lines: ['Whatever my lot, Thou hast taught me to say', 'It is well, it is well with my soul'] },
+          ],
+        },
+        chorus: {
+          id: 'chorus',
+          kind: 'chorus',
+          label: 'Chorus',
+          slides: [{ lines: ['It is well with my soul', 'It is well, it is well with my soul'] }],
+        },
+        v2: {
+          id: 'v2',
+          kind: 'verse',
+          label: 'Verse 2',
+          slides: [
+            { lines: ['Though Satan should buffet, though trials should come', 'Let this blest assurance control'] },
+            { lines: ['That Christ has regarded my helpless estate', 'And hath shed His own blood for my soul'] },
+          ],
+        },
+      },
+      arrangements: [{ id: 'sunday', name: 'Sunday', sectionIds: ['v1', 'chorus', 'v2', 'chorus'] }],
+    },
+  },
+  passages: {
+    'john-3-16': {
+      id: 'john-3-16',
+      reference: 'John 3:16-17',
+      translations: ['KJV', 'WEB'],
+      verses: [
+        {
+          number: 16,
+          text: {
+            KJV: 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.',
+            WEB: 'For God so loved the world, that he gave his one and only Son, that whoever believes in him should not perish, but have eternal life.',
+          },
+        },
+        {
+          number: 17,
+          text: {
+            KJV: 'For God sent not his Son into the world to condemn the world; but that the world through him might be saved.',
+            WEB: 'For God didn’t send his Son into the world to judge the world, but that the world should be saved through him.',
+          },
+        },
+      ],
+    },
+  },
+  backgrounds: [
+    { id: 'night-blue', name: 'Night blue', render: { kind: 'color', color: '#102033' } },
+    { id: 'slow-clouds', name: 'Slow clouds', render: { kind: 'gradient', from: '#22324A', to: '#0B1220', angle: 160 } },
+    { id: 'candle', name: 'Candle', render: { kind: 'gradient', from: '#4A2E14', to: '#140C06', angle: 180 } },
+    { id: 'forest-light', name: 'Forest light', render: { kind: 'gradient', from: '#1D3A26', to: '#08120C', angle: 200 } },
+    { id: 'plum-still', name: 'Plum still', render: { kind: 'color', color: '#1B1430' } },
+  ],
+  lowerThirds: [
+    { id: 'pastor', title: '[Pastor name]', subtitle: 'Senior pastor' },
+    { id: 'welcome', title: 'Karibu · Welcome', subtitle: '[Church name]' },
+  ],
+  audioCues: [{ id: 'walk-in', name: 'Walk-in music' }],
+}
+
+export const demoService: Service = {
+  id: 'sunday',
+  name: 'Sunday Service',
+  items: [
+    { id: 'item-amazing-grace', type: 'song', songId: 'amazing-grace', arrangementId: 'sunday' },
+    { id: 'item-john-3', type: 'scripture', passageId: 'john-3-16' },
+    { id: 'item-it-is-well', type: 'song', songId: 'it-is-well', arrangementId: 'sunday' },
+  ],
+}

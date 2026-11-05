@@ -1,0 +1,68 @@
+.os-host {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #000;
+  container-type: size;
+}
+
+.os-stage {
+  position: relative;
+  overflow: hidden;
+  width: min(100cqw, calc(100cqh * var(--os-aspect, 1.7778)));
+  height: min(100cqh, calc(100cqw / var(--os-aspect, 1.7778)));
+  background: #000;
+  container-type: size;
+}
+
+.os-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.os-box {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  font-size: calc(var(--os-font-size) * var(--os-fit, 1) * 100cqh);
+  line-height: 1.22;
+  overflow-wrap: break-word;
+}
+
+.os-shadow {
+  text-shadow: 0 0.05em 0.25em rgba(0, 0, 0, 0.6);
+}
+
+.os-lower-third {
+  pointer-events: none;
+}
+
+.os-lower-third-bar {
+  position: absolute;
+  left: 5%;
+  bottom: 7%;
+  max-width: 60%;
+  padding: 1.6cqh 2.4cqh;
+  border-left: 0.8cqh solid #c481ff;
+  background: rgba(14, 14, 16, 0.86);
+  color: #fff;
+  font-family: Inter, 'Segoe UI', system-ui, sans-serif;
+}
+
+.os-lower-third-title {
+  font-size: 4.4cqh;
+  font-weight: 700;
+}
+
+.os-lower-third-subtitle {
+  margin-top: 0.4cqh;
+  font-size: 2.8cqh;
+  color: #d6d6da;
+}
+
+.os-text {
+  max-width: 100%;
+}
