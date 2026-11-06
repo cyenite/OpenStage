@@ -11,6 +11,7 @@ export const chrome = window.openstageChrome
 export const isMac = chrome?.platform === 'darwin'
 
 export const workspaces = [
+  { key: 'plan', label: 'Plan' },
   { key: 'edit', label: 'Edit' },
   { key: 'present', label: 'Present' },
 ] as const

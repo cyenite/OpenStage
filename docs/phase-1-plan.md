@@ -48,8 +48,8 @@ Each step lands in a working app; nothing waits for the end.
 - Bundle fonts with the app (Inter and Newsreader via Fontsource) so outputs look the same offline.
 
 ### 4. Scripture
-- Bible store with KJV, WEB and Neno 2015 bundled as separate data files with their notices.
-  **Never bundle SUV or BHN.**
+- Bible store with KJV, BSB, WEB, ASV and BBE bundled as separate data files with their notices
+  (decided 2026-11-06; Neno 2015 may follow). **Never bundle SUV, BHN, NIV or NKJV.**
 - Passage-set builder (`Scripture` screen): type `jn 3 16-18`, `Yohana 3:16`, pick translations in display
   order, verses per slide, smart split of long verses (5a/5b) that keeps both languages aligned.
 - Swahili book names and abbreviations in the reference parser from day one.
@@ -86,7 +86,7 @@ The remaining formats in blueprint 11.1 follow in the same importer framework.
 - Outputs only ever receive resolved `RenderState`; no library access in output windows.
 - Every input maps to a `Command`; phase 2's network API and Companion module reuse the same registry.
 - Speech recognition, when it arrives in phase 4, is English only; no Swahili models for now.
-- Bundled Bibles: public domain or CC BY-SA only (KJV, WEB, Neno 2015).
+- Bundled Bibles: public domain or CC BY-SA only (now KJV, BSB, WEB, ASV, BBE; Neno 2015 allowed).
 
 ## Open questions
 1. Whether the Bible Society of Kenya will license SUV/BHN for software (blueprint 10.3). Worth asking now:

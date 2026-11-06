@@ -2,6 +2,8 @@ import { useState } from 'react'
 import type { Id, OperatorSnapshot } from '@openstage/shared'
 import type { EditLibrary } from './LibraryTabs'
 import { NewSongDialog } from './NewSongDialog'
+import { ScriptureEditor } from './ScriptureEditor'
+import { ScriptureLibrary } from './ScriptureLibrary'
 import { SongEditor } from './SongEditor'
 import { SongLibrary } from './SongLibrary'
 import { ThemeEditor } from './ThemeEditor'
@@ -10,6 +12,7 @@ import { ThemeLibrary } from './ThemeLibrary'
 export interface EditSelection {
   songId: Id | null
   themeId: Id | null
+  passageId: Id | null
   library: EditLibrary
 }
 
@@ -27,6 +30,37 @@ export function EditWorkspace({ snapshot, selection, searchRequest, onSelection 
   const openTheme = (themeId: Id) => select({ library: 'themes', themeId })
   const serviceSongIds = new Set(snapshot.service.items.flatMap((item) => (item.type === 'song' ? [item.songId] : [])))
   const { songId, themeId } = selection
+
+  if (selection.library === 'scripture') {
+    return (
+      <>
+        <ScriptureLibrary
+          service={snapshot.service}
+          revision={snapshot.libraryRevision}
+          selectedId={selection.passageId}
+          onLibrary={(library) => select({ library })}
+          onSelect={(passageId) => select({ passageId })}
+        />
+        <main className="main editor-main">
+          {selection.passageId ? (
+            <ScriptureEditor
+              key={selection.passageId}
+              bibles={snapshot.bibles}
+              service={snapshot.service}
+              revision={snapshot.libraryRevision}
+              passageId={selection.passageId}
+              onDeleted={() => select({ passageId: null })}
+            />
+          ) : (
+            <div className="editor-empty">
+              <h1>Scripture</h1>
+              <p>Type a reference such as “jn 3 16-18” or “Yohana 3:16” in the box on the left. Bibles installed: {snapshot.bibles.map((b) => b.code).join(', ') || 'none'}.</p>
+            </div>
+          )}
+        </main>
+      </>
+    )
+  }
 
   if (selection.library === 'themes') {
     return (

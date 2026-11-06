@@ -1,7 +1,7 @@
 import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, type ElectronApplication } from '@playwright/test'
-import { launch, mainText, tempUserData } from './app'
+import { launch, mainText, orderItem, tempUserData } from './app'
 
 const lyrics = '[Verse 1]\nG       C\nYesu ni wangu\nRafiki yangu\n\n[Kiitikio]\nNitamsifu\n\n[Chorus]\n'
 
@@ -29,7 +29,7 @@ test('a pasted song can be created, added to the service, shown and edited live'
     await expect(operator.locator('.song-row', { hasText: 'Yesu ni Wangu' })).toContainText('in this service')
 
     await operator.getByRole('tab', { name: 'Present' }).click()
-    await operator.getByRole('button', { name: /^SG Yesu ni Wangu/ }).click()
+    await orderItem(operator, /^SG Yesu ni Wangu/).click()
     await operator.getByTestId('slide-0').dblclick()
     await expect(mainText(projector)).toHaveText(/Yesu ni wangu/)
 
@@ -52,7 +52,7 @@ test('a pasted song can be created, added to the service, shown and edited live'
     const restarted = await launch(userData)
     app = restarted.app
     await expect(mainText(restarted.projector)).toHaveText(/Yesu ni wangu/)
-    await expect(restarted.operator.getByRole('button', { name: /^SG Yesu ni Wangu/ })).toBeVisible()
+    await expect(orderItem(restarted.operator, /^SG Yesu ni Wangu/)).toBeVisible()
   } finally {
     await app?.close()
   }

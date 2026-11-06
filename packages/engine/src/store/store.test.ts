@@ -26,7 +26,7 @@ describe('DocumentStore', () => {
   it('round-trips a whole library, one file per document', async () => {
     const root = join(await tempDir(), 'library')
     const { store, errors } = storeAt(root)
-    expect(await store.missingKinds()).toHaveLength(7)
+    expect(await store.missingKinds()).toHaveLength(8)
     await store.saveAll(starterLibrary)
     expect(await store.missingKinds()).toEqual([])
     expect((await readdir(join(root, 'songs'))).sort()).toEqual(['amazing-grace.json', 'it-is-well.json'])
@@ -146,7 +146,7 @@ describe('LibraryIndex', () => {
     expect(index.search('sea bill').map((h) => h.id)).toEqual(['it-is-well'])
     expect(index.search('twas grace').map((h) => h.id)).toEqual(['amazing-grace'])
     expect(index.search('GRÂCE', { kind: 'songs' }).map((h) => h.id)).toEqual(['amazing-grace'])
-    expect(index.search('loved world').map((h) => h.id)).toEqual(['john-3-16'])
+    expect(index.search('john 3').map((h) => h.id)).toEqual(['john-3-16'])
     expect(index.search('candle').map((h) => h.kind)).toEqual(['backgrounds'])
     expect(index.search('grace', { kind: 'songs' })[0]!.detail).toBe('John Newton')
   })

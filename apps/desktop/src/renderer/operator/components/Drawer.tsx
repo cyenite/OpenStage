@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { BackgroundRender, OperatorSnapshot } from '@openstage/shared'
 import { dispatch } from '../engine'
+import { QuickVerse } from './QuickVerse'
 
 const tabs = [
   { key: 'backgrounds', label: 'Backgrounds' },
@@ -15,12 +16,15 @@ export function Drawer({ snapshot }: { snapshot: OperatorSnapshot }) {
   const { library, state } = snapshot
   return (
     <section className="drawer" aria-label="Quick drawer">
-      <div className="drawer-tabs" role="tablist" aria-label="Drawer">
-        {tabs.map((t) => (
-          <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}>
-            {t.label}
-          </button>
-        ))}
+      <div className="drawer-head">
+        <div className="drawer-tabs" role="tablist" aria-label="Drawer">
+          {tabs.map((t) => (
+            <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <QuickVerse />
       </div>
       <div className="drawer-items" role="tabpanel">
         {tab === 'backgrounds' &&

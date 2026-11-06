@@ -1,6 +1,9 @@
 import type { BackgroundRender } from './render'
+import type { BibleInfo, PassageRef } from './scripture'
+import type { ServiceReadiness } from './services'
+import type { StageLayoutKey, StageState } from './stage'
 import type { BoxPatch, Theme, ThemeBoxRole } from './themes'
-import type { AudioCue, Background, Deck, DocumentKind, DocumentRef, DocumentTypes, Id, LowerThird, SectionKind, Service, Song } from './library'
+import type { AudioCue, Background, Deck, DeckSlide, DocumentKind, DocumentRef, DocumentTypes, HeadingKind, Id, LowerThird, SectionKind, Service, ServiceTeam, ServiceTemplate, Song, TemplateSlot } from './library'
 import type { LayerKey } from './layers'
 import type { RenderState } from './render'
 
@@ -16,8 +19,17 @@ export interface LiveLayers {
   lowerThird: Id | null
 }
 
+/** When the live item and the service went live, for the timeline; epoch milliseconds. */
+export interface Timing {
+  itemId: Id | null
+  itemStartedAt: number | null
+  serviceStartedAt: number | null
+}
+
 export interface EngineState {
+  stage: StageState
   serviceId: Id | null
+  timing: Timing
   preview: SlideRef | null
   selectedItemId: Id | null
   live: LiveLayers
@@ -35,14 +47,36 @@ export type Command =
   | { type: 'background.set'; backgroundId: Id }
   | { type: 'lowerThird.set'; lowerThirdId: Id }
   | { type: 'audio.set'; audioCueId: Id }
+  | { type: 'stage.layout'; layout: StageLayoutKey }
+  /** Null clears the message. */
+  | { type: 'stage.message'; text: string | null }
+  | { type: 'stage.timer'; action: 'start' | 'pause' | 'reset' }
+  /** Sets a new countdown, paused at its full length. */
+  | { type: 'stage.timerSet'; label: string; minutes: number }
   | { type: 'song.create'; songId: Id; title: string; lyrics: string; language: string }
   | { type: 'song.delete'; songId: Id }
   | { type: 'song.edit'; songId: Id; edit: SongEdit }
   | { type: 'service.edit'; serviceId: Id; edit: ServiceEdit }
   /** Starts from a copy of `fromThemeId` when given, else from the classic theme. */
+  /** Builds the items from the template when one is given. */
+  | { type: 'service.create'; serviceId: Id; name: string; date: string; time: string; templateId?: Id }
+  | { type: 'service.open'; serviceId: Id }
+  /** Refused for the open service. */
+  | { type: 'service.delete'; serviceId: Id }
+  | { type: 'template.create'; templateId: Id; name: string; fromTemplateId?: Id }
+  | { type: 'template.delete'; templateId: Id }
+  | { type: 'template.edit'; templateId: Id; edit: TemplateEdit }
   | { type: 'theme.create'; themeId: Id; name: string; fromThemeId?: Id }
   | { type: 'theme.delete'; themeId: Id }
   | { type: 'theme.edit'; themeId: Id; edit: ThemeEdit }
+  | { type: 'passage.create'; passageId: Id; ref: PassageRef; translations: string[] }
+  | { type: 'passage.delete'; passageId: Id }
+  | { type: 'passage.edit'; passageId: Id; edit: PassageEdit }
+  /**
+   * Quick verse: makes a passage from typed text in the service's translations, puts it in the
+   * service after the selected item and previews its first slide.
+   */
+  | { type: 'scripture.quick'; text: string; itemId: Id; passageId: Id }
   | { type: 'document.undo'; ref: DocumentRef }
   | { type: 'document.redo'; ref: DocumentRef }
 
@@ -67,17 +101,64 @@ export type ServiceEdit =
   | { type: 'service.addSong'; itemId: Id; songId: Id; arrangementId?: Id }
   | { type: 'service.removeItem'; itemId: Id }
   | { type: 'service.setTheme'; themeId: Id }
+  | { type: 'service.addPassage'; itemId: Id; passageId: Id; afterItemId?: Id }
+  | { type: 'service.setTranslations'; translations: string[] }
+  | { type: 'service.setDetails'; name?: string; date?: string; time?: string }
+  | { type: 'service.setTeam'; team: ServiceTeam }
+  | { type: 'service.moveItem'; itemId: Id; toIndex: number }
+  | { type: 'service.addHeading'; itemId: Id; kind: HeadingKind; title: string; afterItemId?: Id }
+  | { type: 'service.updateItem'; itemId: Id; changes: ItemChanges }
+  /** Puts a song or passage in a template placeholder; the engine fills in the song's first arrangement. */
+  | { type: 'service.fillSlot'; itemId: Id; songId?: Id; passageId?: Id; arrangementId?: Id }
+
+/** Null clears an override. */
+export interface ItemChanges {
+  notes?: string
+  title?: string
+  minutes?: number | null
+  themeId?: Id | null
+  languages?: string[] | null
+  arrangementId?: Id
+}
+
+export type TemplateEdit =
+  | { type: 'template.setDetails'; name?: string; color?: string; time?: string }
+  | { type: 'template.addSlot'; slot: TemplateSlot; afterSlotId?: Id }
+  | { type: 'template.updateSlot'; slotId: Id; changes: Partial<Omit<TemplateSlot, 'id'>> }
+  | { type: 'template.removeSlot'; slotId: Id }
+  | { type: 'template.moveSlot'; slotId: Id; toIndex: number }
+
+export type PassageEdit =
+  | { type: 'passage.setRef'; ref: PassageRef }
+  | { type: 'passage.setTranslations'; translations: string[] }
+  | { type: 'passage.setVersesPerSlide'; versesPerSlide: number }
+  | { type: 'passage.setSplitLong'; splitLong: boolean }
 
 export type ThemeEdit =
   | { type: 'theme.setName'; name: string }
   | { type: 'theme.setFill'; fill: BackgroundRender | null }
   | { type: 'theme.setBox'; role: ThemeBoxRole; style: BoxPatch }
 
-export type EditableKind = 'songs' | 'services' | 'themes'
+export type EditableKind = 'songs' | 'services' | 'themes' | 'passages' | 'templates'
 
 export type LibraryQuery =
   | { type: 'library.search'; text: string; kind?: DocumentKind; limit?: number }
   | { type: 'library.list'; kind: DocumentKind }
+  | { type: 'scripture.slides'; passageId: Id }
+  | { type: 'song.outlines'; songIds: Id[] }
+
+/** Just enough of a song to offer its arrangements and languages as service-item overrides. */
+export interface SongOutline {
+  id: Id
+  title: string
+  languages: string[]
+  arrangements: { id: Id; name: string }[]
+}
+
+export type QueryResult =
+  | { type: 'hits'; hits: SearchHit[] }
+  | { type: 'slides'; slides: DeckSlide[] }
+  | { type: 'outlines'; outlines: SongOutline[] }
 
 export interface SearchHit {
   kind: DocumentKind
@@ -88,6 +169,19 @@ export interface SearchHit {
   /** Matched terms are wrapped in \u0001 and \u0002 so the UI can highlight them. */
   snippet: string
 }
+
+export interface ServiceSummary {
+  id: Id
+  name: string
+  date: string | null
+  time: string | null
+  team: ServiceTeam
+  items: number
+  minutes: number
+  readiness: ServiceReadiness
+  templateId: Id | null
+}
+
 
 export type ClientRole = 'operator' | 'output'
 
@@ -108,7 +202,10 @@ export interface OperatorSnapshot {
   state: EngineState
   decks: Deck[]
   service: Service
-  library: { themes: Theme[]; backgrounds: Background[]; lowerThirds: LowerThird[]; audioCues: AudioCue[] }
+  library: { themes: Theme[]; templates: ServiceTemplate[]; backgrounds: Background[]; lowerThirds: LowerThird[]; audioCues: AudioCue[] }
+  bibles: BibleInfo[]
+  /** Every service, for the calendar, ordered by date and time. */
+  services: ServiceSummary[]
   /** How many songs and services point at each theme, so the UI can say why one cannot be deleted. */
   themeUses: Record<Id, number>
   /** Bumped on every document change, so library views know to query again. */
@@ -128,7 +225,7 @@ export type ClientMessage =
 export type EngineMessage =
   | { type: 'render'; render: RenderState }
   | { type: 'snapshot'; snapshot: OperatorSnapshot }
-  | { type: 'result'; requestId: number; hits: SearchHit[] }
+  | { type: 'result'; requestId: number; result: QueryResult }
   | { type: 'document'; ref: DocumentRef; document: DocumentTypes[DocumentKind] | null; canUndo: boolean; canRedo: boolean }
 
 /** Sent by the Electron main process to the engine with a MessagePort attached. */

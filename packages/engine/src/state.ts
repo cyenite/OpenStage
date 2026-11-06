@@ -1,11 +1,15 @@
-import type { Command, Deck, EngineState, Id, Library, LiveLayers, SlideRef } from '@openstage/shared'
+import { initialStage, stageLayouts, type Command, type Deck, type EngineState, type Id, type Library, type LiveLayers, type SlideRef, type StageState, type Timing } from '@openstage/shared'
 
 export const emptyLive: LiveLayers = { slide: null, audio: null, background: null, lowerThird: null }
+
+export const noTiming: Timing = { itemId: null, itemStartedAt: null, serviceStartedAt: null }
 
 export function initialState(decks: Deck[], defaultBackgroundId: Id | null, serviceId: Id | null): EngineState {
   const first = decks.find((d) => d.slides.length > 0)
   return {
+    stage: initialStage,
     serviceId,
+    timing: noTiming,
     preview: first ? { itemId: first.itemId, index: 0 } : null,
     selectedItemId: first?.itemId ?? null,
     live: { ...emptyLive, background: defaultBackgroundId },
@@ -71,8 +75,12 @@ function step(decks: Deck[], ref: SlideRef, delta: 1 | -1): SlideRef | null {
 export function sanitize(raw: Partial<EngineState>, decks: Deck[], library: Library): EngineState {
   const live = { ...emptyLive, ...raw.live }
   const pick = (records: Record<Id, unknown>, id: Id | null) => (id && Object.hasOwn(records, id) ? id : null)
+  const timing = { ...noTiming, ...raw.timing }
+  const isTimed = decks.some((d) => d.itemId === timing.itemId) && typeof timing.itemStartedAt === 'number'
   return {
+    stage: sanitizeStage(raw.stage),
     serviceId: pick(library.services, raw.serviceId ?? null),
+    timing: isTimed ? timing : { ...noTiming, serviceStartedAt: typeof timing.serviceStartedAt === 'number' ? timing.serviceStartedAt : null },
     preview: isValid(decks, raw.preview ?? null) ? raw.preview! : null,
     selectedItemId: decks.some((d) => d.itemId === raw.selectedItemId) ? raw.selectedItemId! : null,
     live: {
@@ -81,6 +89,19 @@ export function sanitize(raw: Partial<EngineState>, decks: Deck[], library: Libr
       background: pick(library.backgrounds, live.background),
       lowerThird: pick(library.lowerThirds, live.lowerThird),
     },
+  }
+}
+
+function sanitizeStage(raw: Partial<StageState> | undefined): StageState {
+  const isNumber = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n)
+  const timer = raw?.timer
+  const isTimer = !!timer && typeof timer.label === 'string' && isNumber(timer.durationMs) && isNumber(timer.remainingMs) && (timer.endsAt === null || isNumber(timer.endsAt))
+  const message = raw?.message
+  const isMessage = !!message && typeof message.text === 'string' && isNumber(message.sentAt)
+  return {
+    layout: stageLayouts.some((l) => l.key === raw?.layout) ? raw!.layout! : initialStage.layout,
+    timer: isTimer ? timer : initialStage.timer,
+    message: isMessage ? message : null,
   }
 }
 

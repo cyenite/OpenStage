@@ -1,6 +1,6 @@
 import { mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import type { EngineState, Library } from '@openstage/shared'
+import type { BibleText, EngineState, Library } from '@openstage/shared'
 import { buildDecks } from './decks'
 import { sanitize } from './state'
 
@@ -30,7 +30,7 @@ export async function atomicWriteJson(path: string, value: unknown): Promise<voi
  * Restores the live state written before a crash or power cut. Anything that no longer
  * points at real content is dropped rather than trusted; a missing service discards the lot.
  */
-export async function loadLiveState(path: string, library: Library): Promise<EngineState | null> {
+export async function loadLiveState(path: string, library: Library, bibles: BibleText[] = []): Promise<EngineState | null> {
   let raw: Partial<EngineState>
   try {
     raw = JSON.parse(await readFile(path, 'utf8'))
@@ -39,7 +39,7 @@ export async function loadLiveState(path: string, library: Library): Promise<Eng
   }
   const service = raw?.serviceId ? library.services[raw.serviceId] : undefined
   if (!service) return null
-  return sanitize(raw, buildDecks(service, library), library)
+  return sanitize(raw, buildDecks(service, library, bibles), library)
 }
 
 /** Coalesces rapid changes into one write; at most one write is in flight at a time. */

@@ -10,6 +10,7 @@ export function previewRender(theme: Theme, slide: DeckSlide, background: Backgr
     background: theme.fill ? null : background,
     slide: layoutSlide(theme, 'projector', slide, 'preview'),
     lowerThird: null,
+    stage: null,
   }
 }
 

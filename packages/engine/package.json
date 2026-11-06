@@ -12,6 +12,7 @@
     "typecheck": "tsc -p ."
   },
   "dependencies": {
-    "@openstage/shared": "workspace:*"
+    "@openstage/shared": "workspace:*",
+    "saxes": "6.0.0"
   }
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { newId, type Id, type Service, type SongEdit, type Theme } from '@openstage/shared'
 import { dispatch, useDocument } from '../engine'
+import { AddToService } from './AddToService'
 import { ArrangementPanel } from './ArrangementPanel'
 import { CommitField } from './CommitField'
 import { SectionCard } from './SectionCard'
@@ -70,13 +71,7 @@ export function SongEditor({ songId, themes, service, isInService, onDeleted, on
                 Delete
               </button>
             )}
-            <button
-              className="button-primary"
-              disabled={!service.id}
-              onClick={() => dispatch({ type: 'service.edit', serviceId: service.id, edit: { type: 'service.addSong', itemId: newId(song.title), songId } })}
-            >
-              {isInService ? 'Add again to service' : 'Add to service'}
-            </button>
+            <AddToService service={service} isInService={isInService} kind="song" onAdd={(itemId) => ({ type: 'service.addSong', itemId, songId })} onFill={(itemId) => ({ type: 'service.fillSlot', itemId, songId })} />
           </div>
         </div>
 

@@ -1,7 +1,5 @@
-import type { OperatorSnapshot } from '@openstage/shared'
+import { itemKinds, type OperatorSnapshot } from '@openstage/shared'
 import { dispatch } from '../engine'
-
-const kindBadges = { song: 'SG', scripture: 'BK' } as const
 
 interface ServiceOrderProps {
   snapshot: OperatorSnapshot
@@ -27,14 +25,14 @@ export function ServiceOrder({ snapshot, onOpenSongs }: ServiceOrderProps) {
           return (
             <li key={item.id} className="order-row">
               <button
-                className={`order-item${isSelected ? ' is-selected' : ''}${isLive ? ' is-live' : ''}`}
+                className={`order-item${isSelected ? ' is-selected' : ''}${isLive ? ' is-live' : ''}${deck?.isPlaceholder ? ' is-placeholder' : ''}`}
                 aria-current={isSelected ? 'true' : undefined}
                 onClick={() => dispatch({ type: 'item.select', itemId: item.id })}
               >
-                <span className="order-kind">{kindBadges[item.type]}</span>
+                <span className="order-kind">{itemKinds.find((k) => k.key === deck?.kind)?.badge}</span>
                 <span className="order-text">
                   <span className="order-name">{deck?.title}</span>
-                  <span className="order-meta">{deck?.slides.length} slides</span>
+                  <span className="order-meta">{item.type === 'slot' ? 'To choose' : deck?.isPlaceholder ? `${deck.minutes} min` : `${deck?.slides.length} slides`}</span>
                 </span>
                 {isLive && <span className="order-tag is-live">LIVE</span>}
                 {isNext && <span className="order-tag is-next">NEXT</span>}

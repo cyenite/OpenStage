@@ -3,11 +3,14 @@ import type { OperatorSnapshot } from '@openstage/shared'
 import { ControlBar } from './components/ControlBar'
 import { Drawer } from './components/Drawer'
 import { MonitorPane } from './components/MonitorPane'
+import { PresentInspector } from './components/PresentInspector'
 import { ServiceOrder } from './components/ServiceOrder'
-import { ShortcutHints } from './components/ShortcutHints'
 import { SlideGrid } from './components/SlideGrid'
+import { Timeline } from './components/Timeline'
 import { TitleBar } from './components/TitleBar'
 import { EditWorkspace, type EditSelection } from './edit/EditWorkspace'
+import { editLibraries } from './edit/LibraryTabs'
+import { initialPlanSelection, PlanWorkspace, type PlanSelection } from './plan/PlanWorkspace'
 import { isMac, useAppearance, useWindowState, useWorkspace } from './chrome'
 import { useShortcuts } from './useShortcuts'
 import { useSnapshot } from './engine'
@@ -18,7 +21,8 @@ export function App() {
   const [workspace, setWorkspace] = useWorkspace()
   const [appearance, setAppearance] = useAppearance()
   const [searchRequest, setSearchRequest] = useState(0)
-  const [editSelection, setEditSelection] = useState<EditSelection>({ library: 'songs', songId: null, themeId: null })
+  const [planSelection, setPlanSelection] = useState<PlanSelection>(initialPlanSelection)
+  const [editSelection, setEditSelection] = useState<EditSelection>({ library: 'songs', songId: null, themeId: null, passageId: null })
   useShortcuts(workspace === 'present' ? snapshot : null)
 
   const openSearch = () => {
@@ -44,8 +48,14 @@ export function App() {
       {snapshot ? (
         <>
           <TitleBar
-            title={workspace === 'present' ? snapshot.service.name : editSelection.library === 'songs' ? 'Songs' : 'Themes'}
-            subtitle={workspace === 'present' ? `${snapshot.service.items.length} items in the service` : 'Library'}
+            title={workspace === 'present' ? snapshot.service.name : workspace === 'plan' ? 'Planner' : editLibraries.find((l) => l.key === editSelection.library)!.label}
+            subtitle={
+              workspace === 'present'
+                ? `${snapshot.service.items.length} items in the service`
+                : workspace === 'plan'
+                  ? `${snapshot.services.length} ${snapshot.services.length === 1 ? 'service' : 'services'} · ${snapshot.library.templates.length} templates`
+                  : 'Library'
+            }
             snapshot={snapshot}
             workspace={workspace}
             appearance={appearance}
@@ -54,11 +64,9 @@ export function App() {
             onWorkspace={setWorkspace}
             onAppearance={setAppearance}
           />
-          {workspace === 'present' ? (
-            <PresentWorkspace snapshot={snapshot} onOpenSongs={() => setWorkspace('edit')} />
-          ) : (
-            <EditWorkspace snapshot={snapshot} selection={editSelection} searchRequest={searchRequest} onSelection={setEditSelection} />
-          )}
+          {workspace === 'present' && <PresentWorkspace snapshot={snapshot} onOpenSongs={() => setWorkspace('edit')} />}
+          {workspace === 'edit' && <EditWorkspace snapshot={snapshot} selection={editSelection} searchRequest={searchRequest} onSelection={setEditSelection} />}
+          {workspace === 'plan' && <PlanWorkspace snapshot={snapshot} selection={planSelection} onSelection={setPlanSelection} onPresent={() => setWorkspace('present')} />}
         </>
       ) : (
         <ConnectingScreen />
@@ -95,7 +103,8 @@ function PresentWorkspace({ snapshot, onOpenSongs }: { snapshot: OperatorSnapsho
         <SlideGrid snapshot={snapshot} />
         <Drawer snapshot={snapshot} />
       </main>
-      <ShortcutHints />
+      <PresentInspector snapshot={snapshot} />
+      <Timeline snapshot={snapshot} />
     </>
   )
 }

@@ -1,4 +1,5 @@
 import type { BackgroundRender } from './render'
+import type { PassageRef } from './scripture'
 import type { Theme } from './themes'
 
 export type Id = string
@@ -61,24 +62,97 @@ export interface Song {
   arrangements: Arrangement[]
 }
 
+/** A passage set: a reference and how to show it. The words always come from the installed Bibles. */
 export interface ScripturePassage {
   id: Id
-  reference: string
-  /** Translation codes in display order: the first is the main box, the second the secondary box. */
+  ref: PassageRef
+  splitLong: boolean
+  /** Bible codes in display order: the first fills the main box, the second the second-language box. */
   translations: string[]
-  verses: { number: number; text: Record<string, string> }[]
+  versesPerSlide: number
 }
 
-export type ServiceItem =
-  | { id: Id; type: 'song'; songId: Id; arrangementId: Id }
-  | { id: Id; type: 'scripture'; passageId: Id }
+/** What every service item can carry, whatever it shows. */
+export interface ItemBase {
+  id: Id
+  notes?: string
+  /** Planned length; the timeline falls back to the kind's usual length. */
+  minutes?: number
+  themeId?: Id
+  /** The template slot this item came from. */
+  slotId?: Id
+  /** True while the item still follows its template slot; any edit to the item clears it. */
+  isLinked?: boolean
+}
+
+export type ServiceItem = ItemBase &
+  (
+    | { type: 'song'; songId: Id; arrangementId: Id; languages?: string[] }
+    | { type: 'scripture'; passageId: Id }
+    /** A part of the service with no slides of its own yet: sermon, announcements, prayer. */
+    | { type: 'heading'; kind: HeadingKind; title: string }
+    /** A template placeholder still waiting for its song or passage. */
+    | { type: 'slot'; kind: 'song' | 'scripture'; title: string; rule: string }
+  )
+
+export interface ServiceTeam {
+  stage?: string
+  operator?: string
+}
 
 export interface Service {
   id: Id
   name: string
+  /** Local calendar date, `YYYY-MM-DD`. */
+  date?: string
+  /** Local start time, `HH:MM`. */
+  time?: string
+  team?: ServiceTeam
   themeId?: Id
+  templateId?: Id
+  /** Bible codes new passages in this service start with, in display order. */
+  translations?: string[]
   items: ServiceItem[]
 }
+
+export interface TemplateSlot {
+  id: Id
+  kind: ItemKind
+  title: string
+  /** What to put here, in words: "Pick: not used in the last 3 weeks". */
+  rule: string
+  minutes: number
+  /** Fixed content that every service from this template starts with. */
+  songId?: Id
+  passageId?: Id
+}
+
+export interface ServiceTemplate {
+  id: Id
+  name: string
+  color: string
+  /** Default start time for services made from it, `HH:MM`. */
+  time?: string
+  themeId?: Id
+  translations?: string[]
+  slots: TemplateSlot[]
+}
+
+/** Declaration order is the order item kinds are offered in. `minutes` is the usual length when none is planned. */
+export const itemKinds = [
+  { key: 'song', label: 'Song', badge: 'SG', minutes: 5 },
+  { key: 'scripture', label: 'Scripture', badge: 'BK', minutes: 4 },
+  { key: 'welcome', label: 'Welcome', badge: 'WL', minutes: 5 },
+  { key: 'announcements', label: 'Announcements', badge: 'AN', minutes: 6 },
+  { key: 'prayer', label: 'Prayer', badge: 'PR', minutes: 5 },
+  { key: 'offering', label: 'Offering', badge: 'OF', minutes: 5 },
+  { key: 'sermon', label: 'Sermon', badge: 'SM', minutes: 30 },
+  { key: 'benediction', label: 'Benediction', badge: 'BN', minutes: 2 },
+  { key: 'other', label: 'Other', badge: 'IT', minutes: 5 },
+] as const
+
+export type ItemKind = (typeof itemKinds)[number]['key']
+export type HeadingKind = Exclude<ItemKind, 'song' | 'scripture'>
 
 export interface Background {
   id: Id
@@ -106,6 +180,7 @@ export interface DocumentTypes {
   lowerThirds: LowerThird
   audioCues: AudioCue
   themes: Theme
+  templates: ServiceTemplate
 }
 
 export type DocumentKind = keyof DocumentTypes
@@ -118,6 +193,7 @@ export const documentKinds = {
   lowerThirds: { label: 'Lower thirds' },
   audioCues: { label: 'Audio cues' },
   themes: { label: 'Themes' },
+  templates: { label: 'Service templates' },
 } as const satisfies Record<DocumentKind, { label: string }>
 
 export const documentKindKeys = Object.keys(documentKinds) as DocumentKind[]
@@ -137,6 +213,14 @@ export function lookup<T>(records: Record<Id, T>, id: Id | null | undefined): T 
 /** A service item flattened into the slides an operator steps through. */
 export interface Deck {
   itemId: Id
+  kind: ItemKind
+  /** The item's notes, shown on the stage screen. */
+  notes: string
+  minutes: number
+  /** The song's key, for the stage screen. */
+  musicalKey: string
+  /** A template placeholder or heading: in the order and the timeline, but nothing to show yet. */
+  isPlaceholder: boolean
   /** The song's theme, else the service's; may point nowhere, and then the classic theme is used. */
   themeId: Id | null
   title: string

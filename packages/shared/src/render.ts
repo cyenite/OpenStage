@@ -1,3 +1,5 @@
+import type { StageRender } from './stage'
+
 export interface Rect01 {
   x: number
   y: number
@@ -51,6 +53,8 @@ export interface LowerThirdRender {
  * the engine resolves text, styles and media before sending.
  */
 export interface RenderState {
+  /** Set only for stage screens, which draw their own layout instead of slide boxes. */
+  stage: StageRender | null
   seq: number
   aspect: number
   outputId: string

@@ -82,10 +82,13 @@ OpenStage is licensed under the [GNU GPL v3 or later](LICENSE). Being GPL, it ma
 FreeShow (also GPL-3.0) with attribution; see `docs/research/` for the design study.
 
 Bundled content must be public domain or under a compatible open licence. The demo service uses public
-domain hymns and the KJV and World English Bible. Planned bundled Bibles are KJV, WEB and Neno: Bibilia
-Takatifu 2015 (CC BY-SA 4.0, shipped as a separate data file with its notice). The Swahili Union Version
-and Biblia Habari Njema are copyrighted by the Bible Societies of Kenya and Tanzania and must not be
-bundled; churches can import Bible files they hold rights to.
+domain hymns. The bundled Bibles are the King James Version, Berean Standard Bible, World English Bible,
+American Standard Version and Bible in Basic English, all public domain, converted from
+[open-bibles](https://github.com/seven1m/open-bibles) by `pnpm build:bibles` into
+`apps/desktop/resources/bibles/`; each carries its notice, shown in the Scripture screen. Neno: Bibilia
+Takatifu 2015 (CC BY-SA 4.0) may be added later. Copyrighted translations such as the NIV, NKJV, the
+Swahili Union Version and Biblia Habari Njema must not be bundled; churches can import Bible files they
+hold rights to.
 
 The fonts Inter (The Inter Project Authors) and Newsreader (The Newsreader Project Authors) are bundled
 through Fontsource under the SIL Open Font License 1.1, so slides look the same on every machine and

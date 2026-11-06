@@ -1,4 +1,5 @@
 import {
+  bookById,
   classicTheme,
   fontFamilies,
   isSafeId,
@@ -16,6 +17,15 @@ import {
   type ServiceEdit,
   type SlideContent,
   type BackgroundRender,
+  type ItemChanges,
+  type PassageEdit,
+  type ServiceItem,
+  type ServiceTemplate,
+  type TemplateEdit,
+  type TemplateSlot,
+  itemKinds,
+  type PassageRef,
+  type ScripturePassage,
   type BoxStyle,
   type Song,
   type SongEdit,
@@ -131,6 +141,67 @@ export function applyServiceEdit(service: Service, edit: ServiceEdit): Service {
       if (!isSafeId(edit.itemId) || isTaken || !isSafeId(edit.songId) || !isSafeId(edit.arrangementId)) return service
       return { ...service, items: [...service.items, { id: edit.itemId, type: 'song', songId: edit.songId, arrangementId: edit.arrangementId }] }
     }
+    case 'service.addPassage': {
+      const isTaken = service.items.some((i) => i.id === edit.itemId)
+      if (!isSafeId(edit.itemId) || isTaken || !isSafeId(edit.passageId)) return service
+      const after = service.items.findIndex((i) => i.id === edit.afterItemId)
+      const at = after >= 0 ? after + 1 : service.items.length
+      return { ...service, items: service.items.toSpliced(at, 0, { id: edit.itemId, type: 'scripture', passageId: edit.passageId }) }
+    }
+    case 'service.setTranslations':
+      return isCodes(edit.translations) && !same(edit.translations, service.translations) ? { ...service, translations: edit.translations } : service
+    case 'service.setDetails': {
+      const name = edit.name === undefined ? service.name : isText(edit.name) ? edit.name.trim() : ''
+      const date = edit.date === undefined ? service.date : edit.date
+      const time = edit.time === undefined ? service.time : edit.time
+      if (!name || (date !== undefined && !isDate(date)) || (time !== undefined && !isTime(time))) return service
+      const next = { ...service, name, ...(date !== undefined && { date }), ...(time !== undefined && { time }) }
+      return same(next, service) ? service : next
+    }
+    case 'service.setTeam': {
+      const team = edit.team && typeof edit.team === 'object' ? edit.team : null
+      if (!team || !Object.values(team).every((v) => v === undefined || (isText(v) && v.length <= 80))) return service
+      const cleaned = Object.fromEntries(Object.entries({ ...service.team, ...team }).map(([k, v]) => [k, (v ?? '').trim()]).filter(([, v]) => v))
+      return same(cleaned, service.team ?? {}) ? service : { ...service, team: cleaned }
+    }
+    case 'service.moveItem': {
+      const from = service.items.findIndex((i) => i.id === edit.itemId)
+      const to = Math.trunc(edit.toIndex)
+      if (from < 0 || !Number.isInteger(to) || to < 0 || to >= service.items.length || to === from) return service
+      const items = [...service.items]
+      const [moved] = items.splice(from, 1)
+      items.splice(to, 0, moved!)
+      return { ...service, items }
+    }
+    case 'service.addHeading': {
+      const kind: string = edit.kind
+      const isKind = kind !== 'song' && kind !== 'scripture' && itemKinds.some((k) => k.key === kind)
+      const title = isText(edit.title) ? edit.title.trim() : ''
+      if (!isSafeId(edit.itemId) || service.items.some((i) => i.id === edit.itemId) || !isKind || !title) return service
+      const after = service.items.findIndex((i) => i.id === edit.afterItemId)
+      const at = after >= 0 ? after + 1 : service.items.length
+      return { ...service, items: service.items.toSpliced(at, 0, { id: edit.itemId, type: 'heading', kind: edit.kind, title }) }
+    }
+    case 'service.updateItem': {
+      const index = service.items.findIndex((i) => i.id === edit.itemId)
+      const item = service.items[index]
+      const updated = item && withItemChanges(item, edit.changes)
+      return updated && !same(updated, item) ? { ...service, items: service.items.with(index, { ...updated, isLinked: false }) } : service
+    }
+    case 'service.fillSlot': {
+      const index = service.items.findIndex((i) => i.id === edit.itemId)
+      const slot = service.items[index]
+      if (!slot || slot.type !== 'slot') return service
+      const { id, minutes, notes, slotId, themeId } = slot
+      const base = { id, ...(minutes !== undefined && { minutes }), ...(notes && { notes }), ...(slotId && { slotId }), ...(themeId && { themeId }), isLinked: false }
+      if (slot.kind === 'song' && isSafeId(edit.songId) && isSafeId(edit.arrangementId)) {
+        return { ...service, items: service.items.with(index, { ...base, type: 'song', songId: edit.songId, arrangementId: edit.arrangementId }) }
+      }
+      if (slot.kind === 'scripture' && isSafeId(edit.passageId)) {
+        return { ...service, items: service.items.with(index, { ...base, type: 'scripture', passageId: edit.passageId }) }
+      }
+      return service
+    }
     case 'service.setTheme':
       return isSafeId(edit.themeId) && edit.themeId !== service.themeId ? { ...service, themeId: edit.themeId } : service
     case 'service.removeItem': {
@@ -139,6 +210,148 @@ export function applyServiceEdit(service: Service, edit: ServiceEdit): Service {
     }
     default:
       return service
+  }
+}
+
+const isDate = (value: unknown): value is string => isText(value) && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value))
+const isTime = (value: unknown): value is string => isText(value) && /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
+const isMinutes = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= 600
+
+function withItemChanges(item: ServiceItem, changes: ItemChanges): ServiceItem | null {
+  if (!changes || typeof changes !== 'object') return null
+  let next: ServiceItem = { ...item }
+  const drop = <K extends keyof ServiceItem>(key: K) => {
+    const { [key]: _gone, ...rest } = next
+    next = rest as ServiceItem
+  }
+  if (changes.minutes === null) drop('minutes')
+  else if (changes.minutes !== undefined) {
+    if (!isMinutes(changes.minutes)) return null
+    next.minutes = Math.round(changes.minutes * 10) / 10
+  }
+  if (changes.notes !== undefined) {
+    if (!isText(changes.notes) || changes.notes.length > 4000) return null
+    if (changes.notes.trim()) next.notes = changes.notes
+    else drop('notes')
+  }
+  if (changes.themeId === null) drop('themeId')
+  else if (changes.themeId !== undefined) {
+    if (!isSafeId(changes.themeId)) return null
+    next.themeId = changes.themeId
+  }
+  if (changes.title !== undefined) {
+    const title = isText(changes.title) ? changes.title.trim() : ''
+    if (!title || (next.type !== 'heading' && next.type !== 'slot')) return null
+    next = { ...next, title }
+  }
+  if (changes.arrangementId !== undefined) {
+    if (next.type !== 'song' || !isSafeId(changes.arrangementId)) return null
+    next = { ...next, arrangementId: changes.arrangementId }
+  }
+  if (changes.languages !== undefined) {
+    if (next.type !== 'song') return null
+    if (changes.languages === null) {
+      const { languages: _gone, ...rest } = next
+      next = rest
+    } else if (Array.isArray(changes.languages) && changes.languages.length > 0 && changes.languages.every((l) => isLanguage(l))) {
+      next = { ...next, languages: changes.languages }
+    } else {
+      return null
+    }
+  }
+  return next
+}
+
+export function createTemplate(id: Id, name: string, from: ServiceTemplate | undefined): ServiceTemplate {
+  const base: ServiceTemplate = from ? structuredClone(from) : { id, name, color: '#F2A93B', slots: [] }
+  return { ...base, id, name: (isText(name) && name.trim()) || (from ? `${from.name} copy` : 'New template') }
+}
+
+function isSlot(slot: unknown): slot is TemplateSlot {
+  const s = slot as TemplateSlot
+  return (
+    !!s &&
+    isSafeId(s.id) &&
+    itemKinds.some((k) => k.key === s.kind) &&
+    isText(s.title) &&
+    s.title.trim().length > 0 &&
+    isText(s.rule) &&
+    isMinutes(s.minutes) &&
+    (s.songId === undefined || isSafeId(s.songId)) &&
+    (s.passageId === undefined || isSafeId(s.passageId))
+  )
+}
+
+export function applyTemplateEdit(template: ServiceTemplate, edit: TemplateEdit): ServiceTemplate {
+  switch (edit.type) {
+    case 'template.setDetails': {
+      const name = edit.name === undefined ? template.name : isText(edit.name) ? edit.name.trim() : ''
+      if (!name || (edit.color !== undefined && !isColor(edit.color)) || (edit.time !== undefined && !isTime(edit.time))) return template
+      const next = { ...template, name, ...(edit.color !== undefined && { color: edit.color }), ...(edit.time !== undefined && { time: edit.time }) }
+      return same(next, template) ? template : next
+    }
+    case 'template.addSlot': {
+      if (!isSlot(edit.slot) || template.slots.some((s) => s.id === edit.slot.id)) return template
+      const after = template.slots.findIndex((s) => s.id === edit.afterSlotId)
+      return { ...template, slots: template.slots.toSpliced(after >= 0 ? after + 1 : template.slots.length, 0, edit.slot) }
+    }
+    case 'template.updateSlot': {
+      const index = template.slots.findIndex((s) => s.id === edit.slotId)
+      const slot = template.slots[index]
+      if (!slot || !edit.changes || typeof edit.changes !== 'object') return template
+      const { id: _id, ...changes } = edit.changes as TemplateSlot
+      const next = { ...slot, ...changes, id: slot.id }
+      if (next.kind !== 'song') delete next.songId
+      if (next.kind !== 'scripture') delete next.passageId
+      return isSlot(next) && !same(next, slot) ? { ...template, slots: template.slots.with(index, next) } : template
+    }
+    case 'template.removeSlot': {
+      const slots = template.slots.filter((s) => s.id !== edit.slotId)
+      return slots.length < template.slots.length ? { ...template, slots } : template
+    }
+    case 'template.moveSlot': {
+      const from = template.slots.findIndex((s) => s.id === edit.slotId)
+      const to = Math.trunc(edit.toIndex)
+      if (from < 0 || !Number.isInteger(to) || to < 0 || to >= template.slots.length || to === from) return template
+      const slots = [...template.slots]
+      const [moved] = slots.splice(from, 1)
+      slots.splice(to, 0, moved!)
+      return { ...template, slots }
+    }
+    default:
+      return template
+  }
+}
+
+const isCodes = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.length > 0 && value.length <= 4 && value.every((c) => isText(c) && /^[A-Za-z0-9_-]{1,16}$/.test(c)) && new Set(value).size === value.length
+
+export function isPassageRef(ref: unknown): ref is PassageRef {
+  const r = ref as PassageRef
+  const book = r && typeof r === 'object' ? bookById(r.book) : undefined
+  const isChapter = (n: unknown) => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= (book?.chapters ?? 0)
+  const isVerse = (n: unknown) => n === null || (Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 200)
+  return !!book && isChapter(r.startChapter) && isChapter(r.endChapter) && r.endChapter >= r.startChapter && isVerse(r.startVerse) && isVerse(r.endVerse)
+}
+
+export function createPassage(id: Id, ref: PassageRef, translations: string[]): ScripturePassage {
+  return { id, ref, translations, versesPerSlide: 1, splitLong: true }
+}
+
+export function applyPassageEdit(passage: ScripturePassage, edit: PassageEdit): ScripturePassage {
+  switch (edit.type) {
+    case 'passage.setRef':
+      return isPassageRef(edit.ref) && !same(edit.ref, passage.ref) ? { ...passage, ref: edit.ref } : passage
+    case 'passage.setTranslations':
+      return isCodes(edit.translations) && !same(edit.translations, passage.translations) ? { ...passage, translations: edit.translations } : passage
+    case 'passage.setVersesPerSlide': {
+      const isValid = Number.isInteger(edit.versesPerSlide) && edit.versesPerSlide >= 1 && edit.versesPerSlide <= 6
+      return isValid && edit.versesPerSlide !== passage.versesPerSlide ? { ...passage, versesPerSlide: edit.versesPerSlide } : passage
+    }
+    case 'passage.setSplitLong':
+      return typeof edit.splitLong === 'boolean' && edit.splitLong !== passage.splitLong ? { ...passage, splitLong: edit.splitLong } : passage
+    default:
+      return passage
   }
 }
 

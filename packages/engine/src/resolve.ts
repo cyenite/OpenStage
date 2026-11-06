@@ -1,47 +1,54 @@
 import {
   classicTheme,
-  fontCss,
   layoutSlide,
   lookup,
+  shortLabel,
+  type StageRender,
+  type StageSection,
   type Deck,
-  type DeckSlide,
   type EngineState,
-  type FontSpec,
   type LayerKey,
   type Library,
   type RenderState,
   type SlideRef,
-  type SlideRender,
-  type TextBoxRender,
-  type Theme,
 } from '@openstage/shared'
 import { findDeck, findSlide } from './decks'
 
 export const outputs = [
-  { id: 'projector', name: 'Projector', layers: ['background', 'slide', 'lowerThird'], transitionMs: 300 },
-  { id: 'stage', name: 'Stage', layers: ['slide'], transitionMs: 0 },
-] as const satisfies readonly { id: string; name: string; layers: readonly LayerKey[]; transitionMs: number }[]
+  { id: 'projector', name: 'Projector', kind: 'audience', layers: ['background', 'slide', 'lowerThird'], transitionMs: 300 },
+  { id: 'stage', name: 'Stage', kind: 'stage', layers: ['slide'], transitionMs: 0 },
+] as const satisfies readonly { id: string; name: string; kind: 'audience' | 'stage'; layers: readonly LayerKey[]; transitionMs: number }[]
 
 export type OutputProfile = (typeof outputs)[number]
 export type OutputId = OutputProfile['id']
 
-const sans = fontCss('inter')
-
-type SlideLayout = (slide: DeckSlide, next: DeckSlide | null, key: string, theme: Theme) => SlideRender
-
-/** The audience sees the theme; the stage screen keeps its own fixed layout until stage layouts arrive (step 7). */
-const slideLayouts: Record<OutputId, SlideLayout> = {
-  projector: (slide, _next, key, theme) => layoutSlide(theme, 'projector', slide, key),
-  stage: (slide, next, key) => {
-    const boxes: TextBoxRender[] = [
-      box('label', [slide.label], { x: 0.04, y: 0.04, w: 0.92, h: 0.08 }, font(sans, 700, 0.05), '#F2A93B', 'left'),
-      box('main', slide.lines, { x: 0.04, y: 0.14, w: 0.92, h: 0.5 }, font(sans, 600, 0.085), '#FFFFFF', 'left'),
-    ]
-    if (next) {
-      boxes.push(box('next', next.lines, { x: 0.04, y: 0.7, w: 0.92, h: 0.26 }, font(sans, 500, 0.055), '#8A8A92', 'left'))
-    }
-    return { key, fill: null, boxes }
-  },
+/** The stage screen shows the live slide, what comes next, and the stage's own clock, countdown and message. */
+function stageRender(state: EngineState, decks: Deck[], slideRef: SlideRef | null): StageRender {
+  const deck = findDeck(decks, slideRef)
+  const slide = findSlide(decks, slideRef)
+  const next = findSlide(decks, state.preview)
+  const sections: StageSection[] = []
+  deck?.slides.forEach((s, index) => {
+    const label = shortLabel(s.label)
+    const isCurrent = index === slideRef?.index
+    const last = sections.at(-1)
+    const startsRun = index === 0 || deck.slides[index - 1]!.label !== s.label
+    if (startsRun || !last) sections.push({ label, isCurrent })
+    else if (isCurrent) last.isCurrent = true
+  })
+  const detail = slide && deck ? [deck.musicalKey && `Key ${deck.musicalKey}`, `slide ${slideRef!.index + 1} of ${deck.slides.length}`].filter(Boolean).join(' · ') : ''
+  return {
+    layout: state.stage.layout,
+    title: slide && deck ? `${deck.title} · ${slide.label}` : deck?.title ?? '',
+    notes: deck?.notes ?? '',
+    detail,
+    current: slide?.lines ?? [],
+    next: next?.lines ?? [],
+    nextLabel: next ? (findDeck(decks, state.preview)?.itemId === deck?.itemId ? next.label : `${findDeck(decks, state.preview)?.title} · ${next.label}`) : '',
+    sections: deck && deck.slides.length > 1 ? sections : [],
+    timer: state.stage.timer,
+    message: state.stage.message,
+  }
 }
 
 export interface ResolveContext {
@@ -56,10 +63,9 @@ export function resolveRender(
   slideRef: SlideRef | null = state.live.slide,
 ): Omit<RenderState, 'seq'> {
   const shows = (layer: LayerKey) => (profile.layers as readonly LayerKey[]).includes(layer)
-  const slide = shows('slide') ? findSlide(context.decks, slideRef) : null
   const themes = context.library.themes
+  const slide = shows('slide') && profile.kind === 'audience' ? findSlide(context.decks, slideRef) : null
   const theme = lookup(themes, findDeck(context.decks, slideRef)?.themeId) ?? lookup(themes, classicTheme.id) ?? classicTheme
-  const next = slideRef === state.live.slide ? findSlide(context.decks, state.preview) : null
   const background = shows('background') && state.live.background ? context.library.backgrounds[state.live.background]?.render ?? null : null
   const lowerThird = shows('lowerThird') && state.live.lowerThird ? context.library.lowerThirds[state.live.lowerThird] ?? null : null
 
@@ -68,22 +74,8 @@ export function resolveRender(
     outputId: profile.id,
     transitionMs: profile.transitionMs,
     background,
-    slide: slide && slideRef ? slideLayouts[profile.id](slide, next, `${slideRef.itemId}#${slideRef.index}`, theme) : null,
+    slide: slide && slideRef ? layoutSlide(theme, profile.id, slide, `${slideRef.itemId}#${slideRef.index}`) : null,
     lowerThird: lowerThird ? { key: lowerThird.id, title: lowerThird.title, subtitle: lowerThird.subtitle } : null,
+    stage: profile.kind === 'stage' ? stageRender(state, context.decks, slideRef) : null,
   }
-}
-
-function font(family: string, weight: number, size: number, italic = false): FontSpec {
-  return { family, weight, size, italic }
-}
-
-function box(
-  role: TextBoxRender['role'],
-  lines: string[],
-  frame: TextBoxRender['frame'],
-  font: FontSpec,
-  color = '#FFFFFF',
-  align: TextBoxRender['align'] = 'center',
-): TextBoxRender {
-  return { role, lines, frame, font, align, color, hasShadow: true, backing: null }
 }

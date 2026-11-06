@@ -1,4 +1,4 @@
-import { classicTheme, themeBoxRoles, type Chord, type DocumentKind, type DocumentTypes, type SlideContent, type Song, type TextLine, type Theme } from '@openstage/shared'
+import { classicTheme, parseReference, themeBoxRoles, type ScripturePassage, type Chord, type DocumentKind, type DocumentTypes, type SlideContent, type Song, type TextLine, type Theme } from '@openstage/shared'
 
 type Loose<T> = { [K in keyof T]?: unknown }
 
@@ -9,6 +9,7 @@ type Loose<T> = { [K in keyof T]?: unknown }
 export function upgradeDocument<K extends DocumentKind>(kind: K, document: DocumentTypes[K]): DocumentTypes[K] {
   if (kind === 'songs') return upgradeSong(document as Song) as DocumentTypes[K]
   if (kind === 'themes') return completeTheme(document as Theme) as DocumentTypes[K]
+  if (kind === 'passages') return upgradePassage(document as ScripturePassage) as DocumentTypes[K]
   return document
 }
 
@@ -24,6 +25,20 @@ function completeTheme(theme: Theme): Theme {
   ) as Theme['boxes']
   const overrides = raw.overrides && typeof raw.overrides === 'object' ? raw.overrides : {}
   return { ...theme, fill: raw.fill ?? null, boxes, overrides }
+}
+
+/** Step 1 passages held a reference string and their verse text; now the text comes from the installed Bibles. */
+function upgradePassage(passage: ScripturePassage): ScripturePassage {
+  const raw = passage as Loose<ScripturePassage> & ScripturePassage & { reference?: unknown; verses?: unknown }
+  const parsed = !raw.ref && typeof raw.reference === 'string' ? parseReference(raw.reference) : null
+  const { reference: _reference, verses: _verses, ...rest } = raw
+  return {
+    ...rest,
+    ref: parsed?.ok ? parsed.ref : raw.ref,
+    translations: raw.translations.filter((t): t is string => typeof t === 'string'),
+    versesPerSlide: typeof raw.versesPerSlide === 'number' ? raw.versesPerSlide : 1,
+    splitLong: typeof raw.splitLong === 'boolean' ? raw.splitLong : true,
+  }
 }
 
 function upgradeSong(song: Song): Song {

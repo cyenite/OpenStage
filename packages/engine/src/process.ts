@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import type { ClientMessage, EngineConnect, EngineMessage, EngineState } from '@openstage/shared'
+import { loadBibles } from './bibles/store'
 import { Engine, type ClientPort } from './engine'
 import { atomicWriteJson, CoalescingWriter, loadLiveState } from './persistence'
 import { starterLibrary } from './starter-library'
@@ -19,23 +20,27 @@ export async function startEngineProcess(): Promise<void> {
   const parentPort = (process as unknown as { parentPort?: MainPort }).parentPort
   if (!parentPort) throw new Error('The engine must run as an Electron utility process')
 
-  const dataDir = process.argv.find((a) => a.startsWith('--data-dir='))?.slice('--data-dir='.length) ?? process.cwd()
+  const argument = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3)
+  const dataDir = argument('data-dir') ?? process.cwd()
   const statePath = join(dataDir, 'live-state.json')
   const report = (what: string) => (error: unknown) => console.error(`[engine] could not save ${what}`, error)
   const saver = new CoalescingWriter<EngineState>((state) => atomicWriteJson(statePath, state), report('live state'))
   const store = new DocumentStore(join(dataDir, 'library'), { onError: report('a document') })
   const usage = new UsageLog(join(dataDir, 'usage.jsonl'), report('song usage'))
 
-  await store.saveAll(starterLibrary, await store.missingKinds())
+  await store.saveAll(datedStarter(new Date()), await store.missingKinds())
   const { library, problems } = await store.loadAll()
   for (const problem of problems) console.warn('[engine] library:', problem)
   const index = new LibraryIndex()
   index.rebuild(library)
   for (const entry of await usage.read()) index.recordUsage(entry)
-  const restored = await loadLiveState(statePath, library)
+  const bibleFolders = [argument('bibles-dir'), join(dataDir, 'bibles')].filter((f): f is string => !!f)
+  const bibles = await loadBibles(bibleFolders, (file, error) => console.warn('[engine] could not read Bible', file, error))
+  const restored = await loadLiveState(statePath, library, bibles)
 
   const engine = new Engine({
     index,
+    bibles,
     library,
     restored,
     onStateChange: (state) => saver.save(state),
@@ -62,6 +67,14 @@ export async function startEngineProcess(): Promise<void> {
     }
   })
   parentPort.postMessage({ type: 'ready', restored: !!restored })
+}
+
+/** The starter service lands on the coming Sunday, so a new calendar has something on it. */
+function datedStarter(today: Date): typeof starterLibrary {
+  const sunday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + ((7 - today.getDay()) % 7))
+  const date = [sunday.getFullYear(), sunday.getMonth() + 1, sunday.getDate()].map((n) => String(n).padStart(2, '0')).join('-')
+  const services = Object.fromEntries(Object.entries(starterLibrary.services).map(([id, s]) => [id, { ...s, date, time: '09:00' }]))
+  return { ...starterLibrary, services }
 }
 
 function wrap(port: MainPort): ClientPort {

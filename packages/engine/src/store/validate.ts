@@ -12,12 +12,13 @@ const isFields = (value: unknown): value is Fields => typeof value === 'object' 
  */
 export const documentValidators: { [K in DocumentKind]: (value: Fields) => boolean } = {
   songs: (v) => isText(v.title) && isFields(v.meta) && isFields(v.sections) && isList(v.arrangements),
-  passages: (v) => isText(v.reference) && isList(v.translations) && isList(v.verses),
+  passages: (v) => (isFields(v.ref) || isText(v.reference)) && isList(v.translations),
   services: (v) => isText(v.name) && isList(v.items),
   backgrounds: (v) => isText(v.name) && isFields(v.render),
   lowerThirds: (v) => isText(v.title) && isText(v.subtitle),
   audioCues: (v) => isText(v.name),
   themes: (v) => isText(v.name) && isFields(v.boxes),
+  templates: (v) => isText(v.name) && isList(v.slots),
 }
 
 export function isValidDocument(kind: DocumentKind, value: unknown): boolean {

@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, type ElectronApplication } from '@playwright/test'
-import { launch, mainText, tempUserData } from './app'
+import { launch, mainText, orderItem, tempUserData } from './app'
 
 test('the operator window drives both outputs through the engine', async () => {
   const userData = tempUserData()
@@ -18,15 +18,15 @@ test('the operator window drives both outputs through the engine', async () => {
 
     await operator.getByRole('button', { name: /Send to live/ }).click()
     await expect(mainText(projector)).toHaveText(/Amazing grace, how sweet the sound/)
-    await expect(mainText(stage)).toHaveText(/Amazing grace/)
-    await expect(stage.locator('.os-slide:last-child .os-box-next')).toHaveText(/I once was lost/)
+    await expect(stage.locator('.os-stage-current')).toHaveText(/Amazing grace/)
+    await expect(stage.locator('.os-stage-next-lines')).toHaveText(/I once was lost/)
     await expect(stage.locator('.os-background')).toHaveCount(0)
 
     await operator.keyboard.press('ArrowRight')
     await expect(mainText(projector)).toHaveText(/I once was lost/)
     await expect(operator.getByTestId('monitor-live')).toContainText('slide 2')
 
-    await operator.getByRole('button', { name: /^BK John 3:16-17/ }).click()
+    await orderItem(operator, /^BK John 3:16-17/).click()
     await operator.getByTestId('slide-0').dblclick()
     await expect(mainText(projector)).toHaveText(/only begotten Son/)
     await expect(projector.locator('.os-slide:last-child .os-box-secondary')).toHaveText(/one and only Son/)
@@ -37,7 +37,7 @@ test('the operator window drives both outputs through the engine', async () => {
 
     await operator.keyboard.press('F2')
     await expect(projector.locator('.os-slide')).toHaveCount(0)
-    await expect(stage.locator('.os-slide')).toHaveCount(0)
+    await expect(stage.locator('.os-stage-current')).toHaveText('')
     await expect(operator.getByTestId('layer-slide')).toContainText('Off')
     await expect(projector.locator('.os-background')).toHaveCount(1)
     await expect(projector.locator('.os-lower-third')).toHaveCount(1)

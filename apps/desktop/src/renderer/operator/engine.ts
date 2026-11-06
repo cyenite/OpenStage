@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import type { Command, DocumentKind, DocumentTypes, EngineMessage, LibraryQuery, OperatorSnapshot, SearchHit } from '@openstage/shared'
+import type { Command, DeckSlide, SongOutline, DocumentKind, DocumentTypes, EngineMessage, LibraryQuery, OperatorSnapshot, QueryResult, SearchHit } from '@openstage/shared'
 import { engine } from '../engine-client'
 
 let latest: OperatorSnapshot | null = null
@@ -21,17 +21,20 @@ export function dispatch(command: Command): void {
 }
 
 /** Re-runs the query whenever its inputs change, the library changes (`revision`) or the engine reconnects. */
-export function useLibraryQuery(query: LibraryQuery, revision: number): SearchHit[] {
-  const [hits, setHits] = useState<SearchHit[]>([])
+function useQuery<T>(query: LibraryQuery | null, revision: number, pick: (result: QueryResult) => T | undefined, empty: T): T {
+  const [value, setValue] = useState<T>(empty)
   const key = JSON.stringify(query)
   useEffect(() => {
+    if (!query) return setValue(empty)
     let requestId = 0
     const ask = () => {
       requestId = nextRequestId++
       engine.send({ type: 'query', requestId, query: JSON.parse(key) })
     }
     const stopListening = engine.subscribe((message) => {
-      if (message.type === 'result' && message.requestId === requestId) setHits(message.hits)
+      if (message.type !== 'result' || message.requestId !== requestId) return
+      const picked = pick(message.result)
+      if (picked !== undefined) setValue(picked)
     })
     const stopReconnect = engine.onConnect(ask)
     ask()
@@ -40,7 +43,24 @@ export function useLibraryQuery(query: LibraryQuery, revision: number): SearchHi
       stopReconnect()
     }
   }, [key, revision])
-  return hits
+  return value
+}
+
+const noHits: SearchHit[] = []
+const noOutlines: SongOutline[] = []
+const noSlides: DeckSlide[] = []
+
+export function useLibraryQuery(query: LibraryQuery, revision: number): SearchHit[] {
+  return useQuery(query, revision, (result) => (result.type === 'hits' ? result.hits : undefined), noHits)
+}
+
+export function useSongOutlines(songIds: string[], revision: number): SongOutline[] {
+  return useQuery({ type: 'song.outlines', songIds: [...new Set(songIds)].sort() }, revision, (result) => (result.type === 'outlines' ? result.outlines : undefined), noOutlines)
+}
+
+export function useScriptureSlides(passageId: string | null, revision: number): DeckSlide[] {
+  const query = passageId ? ({ type: 'scripture.slides', passageId } as const) : null
+  return useQuery(query, revision, (result) => (result.type === 'slides' ? result.slides : undefined), noSlides)
 }
 
 export interface WatchedDocument<K extends DocumentKind> {

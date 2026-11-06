@@ -1,10 +1,11 @@
 import { plainLine, starterThemes, type Library } from '@openstage/shared'
+import { starterTemplates } from './starter-templates'
 
 const plain = (...texts: string[]) => texts.map(plainLine)
 
 /**
  * Written into an empty library on first start. All public domain: hymns by John Newton (1779)
- * and Horatio Spafford (1873), scripture from the KJV and the World English Bible.
+ * and Horatio Spafford (1873). The passage only points at John 3; its words come from the bundled Bibles.
  */
 export const starterLibrary: Library = {
   songs: {
@@ -93,24 +94,10 @@ export const starterLibrary: Library = {
   passages: {
     'john-3-16': {
       id: 'john-3-16',
-      reference: 'John 3:16-17',
+      ref: { book: 'JHN', startChapter: 3, startVerse: 16, endChapter: 3, endVerse: 17 },
       translations: ['KJV', 'WEB'],
-      verses: [
-        {
-          number: 16,
-          text: {
-            KJV: 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.',
-            WEB: 'For God so loved the world, that he gave his one and only Son, that whoever believes in him should not perish, but have eternal life.',
-          },
-        },
-        {
-          number: 17,
-          text: {
-            KJV: 'For God sent not his Son into the world to condemn the world; but that the world through him might be saved.',
-            WEB: 'For God didn’t send his Son into the world to judge the world, but that the world should be saved through him.',
-          },
-        },
-      ],
+      versesPerSlide: 1,
+      splitLong: true,
     },
   },
   services: {
@@ -118,6 +105,7 @@ export const starterLibrary: Library = {
       id: 'sunday',
       name: 'Sunday Service',
       themeId: 'classic',
+      translations: ['KJV'],
       items: [
         { id: 'item-amazing-grace', type: 'song', songId: 'amazing-grace', arrangementId: 'sunday' },
         { id: 'item-john-3', type: 'scripture', passageId: 'john-3-16' },
@@ -138,4 +126,5 @@ export const starterLibrary: Library = {
   },
   audioCues: { 'walk-in': { id: 'walk-in', name: 'Walk-in music' } },
   themes: Object.fromEntries(starterThemes.map((theme) => [theme.id, theme])),
+  templates: Object.fromEntries(starterTemplates.map((template) => [template.id, template])),
 }

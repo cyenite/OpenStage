@@ -1,4 +1,5 @@
 import type { BackgroundRender, LowerThirdRender, RenderState, SlideRender, TextBoxRender } from '@openstage/shared'
+import { StageView } from './stage'
 
 /**
  * Draws a RenderState into a host element. Used full screen by output windows and scaled down
@@ -9,6 +10,7 @@ export class OutputSurface {
   private readonly slide: LayerView
   private readonly background: LayerView
   private readonly lowerThird: LayerView
+  private readonly stageView: StageView
 
   constructor(host: HTMLElement) {
     host.classList.add('os-host')
@@ -16,6 +18,7 @@ export class OutputSurface {
     this.background = new LayerView(this.stage)
     this.slide = new LayerView(this.stage)
     this.lowerThird = new LayerView(this.stage)
+    this.stageView = new StageView(this.stage)
     void document.fonts?.ready.then(() => this.refit())
   }
 
@@ -25,9 +28,11 @@ export class OutputSurface {
     this.background.show(state.background, ms, buildBackground)
     this.slide.show(state.slide, ms, buildSlide)
     this.lowerThird.show(state.lowerThird, ms, buildLowerThird)
+    this.stageView.render(state.stage ?? null)
   }
 
   destroy(): void {
+    this.stageView.destroy()
     this.stage.remove()
   }
 

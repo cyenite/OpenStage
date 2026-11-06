@@ -1,6 +1,18 @@
 import {
+  followTemplate,
+  stageLayouts,
   isSafeId,
+  itemMinutes,
   lookup,
+  parseReference,
+  serviceFromTemplate,
+  serviceReadiness,
+  type ServiceSummary,
+  type ServiceTemplate,
+  type TemplateEdit,
+  type BibleText,
+  type PassageEdit,
+  type QueryResult,
   type ClientHello,
   type ClientMessage,
   type Command,
@@ -22,10 +34,11 @@ import {
   type SongEdit,
   type ThemeEdit,
 } from '@openstage/shared'
-import { buildDecks } from './decks'
-import { applyServiceEdit, applySongEdit, applyThemeEdit, createSong, createTheme } from './edits'
+import { bibleInfo } from './bibles/store'
+import { buildDecks, scriptureSlides } from './decks'
+import { applyPassageEdit, applyServiceEdit, applySongEdit, applyTemplateEdit, applyThemeEdit, createPassage, createSong, createTemplate, createTheme, isPassageRef } from './edits'
 import { outputs, resolveRender, type OutputId } from './resolve'
-import { initialState, reduce, sanitize } from './state'
+import { initialState, noTiming, reduce, sanitize } from './state'
 import { DocumentHistory } from './store/history'
 import type { LibrarySearch } from './store/library-index'
 
@@ -44,7 +57,9 @@ interface Client {
 interface Edits {
   songs: SongEdit
   themes: ThemeEdit
+  passages: PassageEdit
   services: ServiceEdit
+  templates: TemplateEdit
 }
 
 type History = DocumentHistory<DocumentTypes[EditableKind], Edits[EditableKind]>
@@ -52,7 +67,9 @@ type History = DocumentHistory<DocumentTypes[EditableKind], Edits[EditableKind]>
 const appliers: { [K in EditableKind]: (document: DocumentTypes[K], edit: Edits[K]) => DocumentTypes[K] } = {
   songs: applySongEdit,
   themes: applyThemeEdit,
+  passages: applyPassageEdit,
   services: applyServiceEdit,
+  templates: applyTemplateEdit,
 }
 
 const isEditable = (kind: unknown): kind is EditableKind => typeof kind === 'string' && Object.hasOwn(appliers, kind)
@@ -64,7 +81,9 @@ interface OutputChannel {
 }
 
 export interface EngineOptions {
+  now?: () => number
   index?: LibrarySearch
+  bibles?: BibleText[]
   library: Library
   restored?: EngineState | null
   serviceId?: Id | null
@@ -75,6 +94,11 @@ export interface EngineOptions {
 }
 
 const noService: Service = { id: '', name: 'No service', items: [] }
+
+const localDay = (time: number) => {
+  const date = new Date(time)
+  return [date.getFullYear(), date.getMonth() + 1, date.getDate()].map((n) => String(n).padStart(2, '0')).join('-')
+}
 
 const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name)
 
@@ -97,7 +121,7 @@ export class Engine {
     this.library = options.library
     const services = Object.values(options.library.services).sort(byName)
     const serviceId = options.restored?.serviceId ?? lookup(options.library.services, options.serviceId)?.id ?? services[0]?.id ?? null
-    this.decks = buildDecks(lookup(this.library.services, serviceId) ?? noService, this.library)
+    this.decks = buildDecks(lookup(this.library.services, serviceId) ?? noService, this.library, this.bibles)
     const background = Object.values(options.library.backgrounds).sort(byName)[0]?.id ?? null
     this.state = options.restored ?? initialState(this.decks, background, serviceId)
     this.resolveOutputs()
@@ -109,6 +133,14 @@ export class Engine {
 
   get service(): Service {
     return lookup(this.library.services, this.state.serviceId) ?? noService
+  }
+
+  private now(): number {
+    return this.options.now?.() ?? Date.now()
+  }
+
+  private get bibles(): BibleText[] {
+    return this.options.bibles ?? []
   }
 
   get documents(): Library {
@@ -142,12 +174,39 @@ export class Engine {
         return this.edit('songs', command.songId, (history) => history.execute(command.edit))
       case 'service.edit':
         return this.edit('services', command.serviceId, (history) => history.execute(this.completeServiceEdit(command.edit)))
+      case 'stage.layout':
+      case 'stage.message':
+      case 'stage.timer':
+      case 'stage.timerSet':
+        return this.stageCommand(command)
+      case 'service.create':
+        return this.createService(command)
+      case 'service.open':
+        return this.openService(command.serviceId)
+      case 'service.delete':
+        return this.deleteService(command.serviceId)
+      case 'template.create':
+        if (!isSafeId(command.templateId) || Object.hasOwn(this.library.templates, command.templateId)) return
+        return this.store('templates', createTemplate(command.templateId, command.name, lookup(this.library.templates, command.fromTemplateId)))
+      case 'template.delete':
+        return this.deleteTemplate(command.templateId)
+      case 'template.edit':
+        return this.edit('templates', command.templateId, (history) => history.execute(command.edit))
       case 'theme.create':
         return this.createTheme(command)
       case 'theme.delete':
         return this.deleteTheme(command.themeId)
       case 'theme.edit':
         return this.edit('themes', command.themeId, (history) => history.execute(command.edit))
+      case 'passage.create':
+        if (!isSafeId(command.passageId) || Object.hasOwn(this.library.passages, command.passageId) || !isPassageRef(command.ref)) return
+        return this.store('passages', createPassage(command.passageId, command.ref, this.validTranslations(command.translations)))
+      case 'passage.delete':
+        return this.deletePassage(command.passageId)
+      case 'passage.edit':
+        return this.edit('passages', command.passageId, (history) => history.execute(command.edit))
+      case 'scripture.quick':
+        return this.quickVerse(command)
       case 'document.undo':
         if (isEditable(command.ref?.kind)) this.edit(command.ref.kind, command.ref.id, (history) => history.undo())
         return
@@ -155,12 +214,15 @@ export class Engine {
         if (isEditable(command.ref?.kind)) this.edit(command.ref.kind, command.ref.id, (history) => history.redo())
         return
     }
-    const next = reduce(this.state, command, this.decks)
-    if (next === this.state) return
+    const reduced = reduce(this.state, command, this.decks)
+    if (reduced === this.state) return
     const previousItemId = this.state.live.slide?.itemId
-    this.setState(next)
-    const item = this.service.items.find((i) => i.id === next.live.slide?.itemId)
-    if (item && item.id !== previousItemId) this.options.onItemLive?.(item, this.service)
+    const item = this.service.items.find((i) => i.id === reduced.live.slide?.itemId)
+    const isNewItem = !!item && item.id !== previousItemId
+    const now = this.now()
+    const timing = isNewItem ? { itemId: item.id, itemStartedAt: now, serviceStartedAt: this.state.timing.serviceStartedAt ?? now } : this.state.timing
+    this.setState({ ...reduced, timing })
+    if (isNewItem) this.options.onItemLive?.(item, this.service)
     this.publish()
   }
 
@@ -172,10 +234,13 @@ export class Engine {
       service: this.service,
       library: {
         themes: Object.values(this.library.themes).sort(byName),
+        templates: Object.values(this.library.templates).sort(byName),
         audioCues: Object.values(this.library.audioCues).sort(byName),
         backgrounds: Object.values(this.library.backgrounds).sort(byName),
         lowerThirds: Object.values(this.library.lowerThirds).sort((a, b) => a.title.localeCompare(b.title)),
       },
+      bibles: this.bibles.map(bibleInfo),
+      services: this.serviceSummaries(),
       libraryRevision: this.libraryRevision,
       themeUses: this.themeUses(),
       outputs: outputs.map((o) => {
@@ -197,7 +262,7 @@ export class Engine {
     if (message?.type === 'command' && client.hello.role === 'operator') {
       this.dispatch(message.command)
     } else if (message?.type === 'query' && client.hello.role === 'operator' && typeof message.requestId === 'number') {
-      client.port.send({ type: 'result', requestId: message.requestId, hits: this.query(message.query) })
+      client.port.send({ type: 'result', requestId: message.requestId, result: this.query(message.query) })
     } else if (message?.type === 'watch' && client.hello.role === 'operator') {
       const ref = message.ref
       client.watching = ref && typeof ref.id === 'string' && typeof ref.kind === 'string' ? { kind: ref.kind, id: ref.id } : null
@@ -210,12 +275,56 @@ export class Engine {
     }
   }
 
-  private query(query: Extract<ClientMessage, { type: 'query' }>['query']): SearchHit[] {
+  private query(query: Extract<ClientMessage, { type: 'query' }>['query']): QueryResult {
     const index = this.options.index
-    if (!index || !query) return []
-    if (query.type === 'library.list') return index.list(query.kind)
-    if (query.type === 'library.search' && typeof query.text === 'string') return index.search(query.text, { kind: query.kind, limit: query.limit })
-    return []
+    const hits = (list: SearchHit[]): QueryResult => ({ type: 'hits', hits: list })
+    if (query?.type === 'scripture.slides') {
+      const passage = lookup(this.library.passages, query.passageId)
+      return { type: 'slides', slides: passage?.ref ? scriptureSlides(passage, this.bibles) : [] }
+    }
+    if (query?.type === 'song.outlines') {
+      const ids = Array.isArray(query.songIds) ? query.songIds : []
+      const outlines = ids.flatMap((id) => {
+        const song = lookup(this.library.songs, id)
+        return song ? [{ id, title: song.title, languages: song.languages, arrangements: song.arrangements.map(({ id, name }) => ({ id, name })) }] : []
+      })
+      return { type: 'outlines', outlines }
+    }
+    if (!index || !query) return hits([])
+    if (query.type === 'library.list') return hits(index.list(query.kind))
+    if (query.type === 'library.search' && typeof query.text === 'string') return hits(index.search(query.text, { kind: query.kind, limit: query.limit }))
+    return hits([])
+  }
+
+  /** Only installed Bibles, in the order asked; with none of them, the service's first, else the first installed. */
+  private validTranslations(codes: unknown): string[] {
+    const installed = new Set(this.bibles.map((b) => b.code))
+    const asked = Array.isArray(codes) ? codes.filter((c): c is string => typeof c === 'string' && installed.has(c)) : []
+    const fallback = (this.service.translations ?? []).filter((c) => installed.has(c))
+    const chosen = asked.length > 0 ? asked : fallback.length > 0 ? fallback : this.bibles.slice(0, 1).map((b) => b.code)
+    return [...new Set(chosen)].slice(0, 4)
+  }
+
+  private quickVerse(command: Extract<Command, { type: 'scripture.quick' }>): void {
+    const parsed = typeof command.text === 'string' ? parseReference(command.text) : null
+    const service = this.service
+    const isFree = isSafeId(command.itemId) && isSafeId(command.passageId) && !Object.hasOwn(this.library.passages, command.passageId)
+    if (!parsed?.ok || !service.id || !isFree || service.items.some((i) => i.id === command.itemId)) return
+    this.store('passages', createPassage(command.passageId, parsed.ref, this.validTranslations(service.translations)))
+    const afterItemId = this.state.selectedItemId ?? undefined
+    this.edit('services', service.id, (history) => history.execute({ type: 'service.addPassage', itemId: command.itemId, passageId: command.passageId, afterItemId }))
+    this.dispatch({ type: 'item.select', itemId: command.itemId })
+  }
+
+  /** Refused while a service still uses the passage. */
+  private deletePassage(passageId: Id): void {
+    const isUsed = Object.values(this.library.services).some((s) => s.items.some((i) => i.type === 'scripture' && i.passageId === passageId))
+    if (!Object.hasOwn(this.library.passages, passageId) || isUsed) return
+    const { [passageId]: _removed, ...passages } = this.library.passages
+    this.library = { ...this.library, passages }
+    this.histories.delete(`passages/${passageId}`)
+    this.options.onDocumentRemove?.('passages', passageId)
+    this.afterLibraryChange({ kind: 'passages', id: passageId })
   }
 
   private history(kind: EditableKind, id: Id): History | null {
@@ -232,14 +341,119 @@ export class Engine {
 
   private edit(kind: EditableKind, id: Id, change: (history: History) => boolean): void {
     const history = this.history(kind, id)
-    if (history && change(history)) this.store(kind, history.document)
+    if (!history || !change(history)) return
+    this.store(kind, history.document)
+    if (kind === 'templates') this.followTemplateEdit(history.document as ServiceTemplate)
   }
 
   /** Adds what a service item needs that only the engine knows: the song's first arrangement. */
   private completeServiceEdit(edit: ServiceEdit): ServiceEdit {
-    if (edit?.type !== 'service.addSong' || edit.arrangementId) return edit
-    const song = lookup(this.library.songs, edit.songId)
-    return song?.arrangements[0] ? { ...edit, arrangementId: song.arrangements[0].id } : edit
+    if ((edit?.type !== 'service.addSong' && edit?.type !== 'service.fillSlot') || edit.arrangementId || !edit.songId) return edit
+    const arrangementId = this.firstArrangement(edit.songId)
+    return arrangementId ? { ...edit, arrangementId } : edit
+  }
+
+  /** The stage's clock-driven state needs the engine's time, so it is not part of the pure reducer. */
+  private stageCommand(command: Extract<Command, { type: 'stage.layout' | 'stage.message' | 'stage.timer' | 'stage.timerSet' }>): void {
+    const now = this.now()
+    const stage = this.state.stage
+    const timer = stage.timer
+    let next = stage
+    if (command.type === 'stage.layout' && stageLayouts.some((l) => l.key === command.layout)) {
+      next = { ...stage, layout: command.layout }
+    } else if (command.type === 'stage.message') {
+      const text = typeof command.text === 'string' ? command.text.trim().slice(0, 200) : ''
+      next = { ...stage, message: text ? { text, sentAt: now } : null }
+    } else if (command.type === 'stage.timerSet') {
+      const minutes = Number(command.minutes)
+      if (!Number.isFinite(minutes) || minutes <= 0 || minutes > 600) return
+      const durationMs = Math.round(minutes * 60_000)
+      const label = typeof command.label === 'string' && command.label.trim() ? command.label.trim().slice(0, 60) : 'Countdown'
+      next = { ...stage, timer: { label, durationMs, endsAt: null, remainingMs: durationMs } }
+    } else if (command.type === 'stage.timer' && command.action === 'start' && timer.endsAt === null) {
+      next = { ...stage, timer: { ...timer, endsAt: now + timer.remainingMs } }
+    } else if (command.type === 'stage.timer' && command.action === 'pause' && timer.endsAt !== null) {
+      next = { ...stage, timer: { ...timer, endsAt: null, remainingMs: timer.endsAt - now } }
+    } else if (command.type === 'stage.timer' && command.action === 'reset') {
+      next = { ...stage, timer: { ...timer, endsAt: null, remainingMs: timer.durationMs } }
+    }
+    if (next === stage) return
+    this.setState({ ...this.state, stage: next })
+    this.publish()
+  }
+
+  private firstArrangement = (songId: Id): Id | undefined => lookup(this.library.songs, songId)?.arrangements[0]?.id
+
+  private serviceSummaries(): ServiceSummary[] {
+    const key = (s: Service) => `${s.date ?? '9999'} ${s.time ?? ''} ${s.name}`
+    return Object.values(this.library.services)
+      .sort((a, b) => key(a).localeCompare(key(b)))
+      .map((service) => ({
+        id: service.id,
+        name: service.name,
+        date: service.date ?? null,
+        time: service.time ?? null,
+        team: service.team ?? {},
+        items: service.items.length,
+        minutes: service.items.reduce((sum, item) => sum + itemMinutes(item), 0),
+        readiness: serviceReadiness(service),
+        templateId: service.templateId ?? null,
+      }))
+  }
+
+  private createService(command: Extract<Command, { type: 'service.create' }>): void {
+    const name = typeof command.name === 'string' ? command.name.trim() : ''
+    const isValid = /^\d{4}-\d{2}-\d{2}$/.test(command.date ?? '') && /^([01]\d|2[0-3]):[0-5]\d$/.test(command.time ?? '')
+    if (!isSafeId(command.serviceId) || Object.hasOwn(this.library.services, command.serviceId) || !name || !isValid) return
+    const template = lookup(this.library.templates, command.templateId)
+    this.store('services', serviceFromTemplate(template, { id: command.serviceId, name, date: command.date, time: command.time }, this.firstArrangement))
+  }
+
+  /** Switches what the operator presents. Layers that are not slides stay on screen. */
+  private openService(serviceId: Id): void {
+    const service = lookup(this.library.services, serviceId)
+    if (!service || serviceId === this.state.serviceId) return
+    this.decks = buildDecks(service, this.library, this.bibles)
+    const fresh = initialState(this.decks, null, serviceId)
+    this.setState({ ...fresh, live: { ...this.state.live, slide: null }, timing: noTiming })
+    this.publish()
+  }
+
+  /** Refused for the open service, which is on screen or about to be. */
+  private deleteService(serviceId: Id): void {
+    if (!Object.hasOwn(this.library.services, serviceId) || serviceId === this.state.serviceId) return
+    const { [serviceId]: _removed, ...services } = this.library.services
+    this.library = { ...this.library, services }
+    this.histories.delete(`services/${serviceId}`)
+    this.options.onDocumentRemove?.('services', serviceId)
+    this.afterLibraryChange({ kind: 'services', id: serviceId })
+  }
+
+  /** Services made from it keep their items; they just stop following it. */
+  private deleteTemplate(templateId: Id): void {
+    if (!Object.hasOwn(this.library.templates, templateId)) return
+    const { [templateId]: _removed, ...templates } = this.library.templates
+    this.library = { ...this.library, templates }
+    this.histories.delete(`templates/${templateId}`)
+    this.options.onDocumentRemove?.('templates', templateId)
+    for (const service of Object.values(this.library.services).filter((s) => s.templateId === templateId)) {
+      const { templateId: _old, ...rest } = service
+      this.histories.delete(`services/${service.id}`)
+      this.store('services', rest)
+    }
+    this.afterLibraryChange({ kind: 'templates', id: templateId })
+  }
+
+  /** Services from today on that came from this template follow its edits; past services stay as they ran. */
+  private followTemplateEdit(template: ServiceTemplate): void {
+    const today = localDay(this.now())
+    for (const service of Object.values(this.library.services)) {
+      if (service.templateId !== template.id || (service.date && service.date < today)) continue
+      const followed = followTemplate(service, template, this.firstArrangement)
+      if (followed === service) continue
+      this.histories.delete(`services/${service.id}`)
+      this.store('services', followed)
+    }
   }
 
   private createSong(command: Extract<Command, { type: 'song.create' }>): void {
@@ -296,7 +510,7 @@ export class Engine {
 
   private afterLibraryChange(ref: DocumentRef): void {
     this.libraryRevision++
-    this.decks = buildDecks(this.service, this.library)
+    this.decks = buildDecks(this.service, this.library, this.bibles)
     const next = sanitize(this.state, this.decks, this.library)
     if (JSON.stringify(next) !== JSON.stringify(this.state)) this.setState(next)
     for (const client of this.clients) {

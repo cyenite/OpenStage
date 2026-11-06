@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import {
   documentKindKeys,
+  formatReference,
   documentKinds,
   type DocumentKind,
   type DocumentTypes,
@@ -35,11 +36,12 @@ interface Described {
 
 const describe: { [K in DocumentKind]: (document: DocumentTypes[K]) => Described } = {
   songs: (song) => ({ title: song.title, detail: song.meta.authors.join(', '), body: [...song.meta.authors, ...songLines(song)] }),
-  passages: (passage) => ({ title: passage.reference, detail: passage.translations.join(' + '), body: passage.verses.flatMap((v) => Object.values(v.text)) }),
+  passages: (passage) => ({ title: passage.ref ? formatReference(passage.ref) : passage.id, detail: passage.translations.join(' + '), body: [] }),
   services: (service) => ({ title: service.name, detail: `${service.items.length} items`, body: [] }),
   backgrounds: (background) => ({ title: background.name, detail: '', body: [] }),
   lowerThirds: (lowerThird) => ({ title: lowerThird.title, detail: lowerThird.subtitle, body: [lowerThird.subtitle] }),
   audioCues: (cue) => ({ title: cue.name, detail: '', body: [] }),
+  templates: (template) => ({ title: template.name, detail: `${template.slots.length} items`, body: template.slots.map((s) => s.title) }),
   themes: (theme) => ({ title: theme.name, detail: theme.fill ? 'Own background' : 'Over the background layer', body: [] }),
 }
 

@@ -24,3 +24,6 @@ export async function launch(userData: string) {
 }
 
 export const mainText = (page: Page) => page.locator('.os-slide:last-child .os-box-main')
+
+/** A service order item, looked up inside the sidebar so the inspector's "Up next" card never matches. */
+export const orderItem = (page: Page, name: RegExp) => page.getByRole('navigation', { name: 'Service order' }).getByRole('button', { name })

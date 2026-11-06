@@ -2,13 +2,14 @@ import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { EngineState } from '@openstage/shared'
+import { initialStage, type EngineState } from '@openstage/shared'
 import { buildDecks } from './decks'
 import { atomicWriteJson, CoalescingWriter, loadLiveState } from './persistence'
+import { testBibles } from './bibles/fixture'
 import { starterLibrary } from './starter-library'
 import { initialState } from './state'
 
-const decks = buildDecks(starterLibrary.services.sunday!, starterLibrary)
+const decks = buildDecks(starterLibrary.services.sunday!, starterLibrary, testBibles)
 
 async function tempDir() {
   return mkdtemp(join(tmpdir(), 'openstage-'))
@@ -53,7 +54,9 @@ describe('persistence', () => {
     const raw = { serviceId: 'sunday', preview: { itemId: 'gone', index: 0 }, live: { slide: { itemId: decks[0]!.itemId, index: 42 }, background: 'gone', audio: null, lowerThird: null } }
     await writeFile(path, JSON.stringify(raw))
     expect(await loadLiveState(path, starterLibrary)).toEqual({
+      stage: initialStage,
       serviceId: 'sunday',
+      timing: { itemId: null, itemStartedAt: null, serviceStartedAt: null },
       preview: null,
       selectedItemId: null,
       live: { slide: null, audio: null, background: null, lowerThird: null },
