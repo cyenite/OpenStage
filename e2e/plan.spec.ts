@@ -16,7 +16,11 @@ test('a service planned from a template is filled, staffed and presented', async
 
     await expect(operator.getByRole('textbox', { name: 'Service name' })).toHaveValue('Youth night')
     await expect(operator.locator('.plan-item')).toHaveCount(4)
-    await operator.getByRole('combobox', { name: 'Choose the song for Worship' }).selectOption({ label: 'It Is Well with My Soul' })
+    await operator.getByRole('button', { name: 'Choose the song for Worship' }).click()
+    const quickAdd = operator.getByRole('dialog', { name: 'Add to the service' })
+    await quickAdd.getByRole('textbox', { name: 'Search everything to add' }).fill('it is well')
+    await quickAdd.getByRole('button', { name: /^Fill Worship with It Is Well with My Soul/ }).click()
+    await expect(quickAdd).toHaveCount(0)
     await expect(operator.locator('.plan-item.is-open')).toHaveCount(0)
     const notes = operator.getByRole('textbox', { name: 'Notes for Talk' })
     await notes.fill('Keep it to 20 minutes')

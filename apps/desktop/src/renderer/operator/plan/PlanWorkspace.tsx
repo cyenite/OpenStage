@@ -5,6 +5,7 @@ import { CommitField } from '../edit/CommitField'
 import { Calendar } from './Calendar'
 import { addMonths, dayKey, longDay, monthTitle } from './dates'
 import { NewServiceDialog } from './NewServiceDialog'
+import type { AddTarget } from '../library/results'
 import { ServicePlan } from './ServicePlan'
 import { TemplatePanel } from './TemplatePanel'
 
@@ -30,10 +31,11 @@ interface PlanWorkspaceProps {
   snapshot: OperatorSnapshot
   selection: PlanSelection
   onSelection: (selection: PlanSelection) => void
+  onQuickAdd: (target: AddTarget) => void
   onPresent: () => void
 }
 
-export function PlanWorkspace({ snapshot, selection, onSelection, onPresent }: PlanWorkspaceProps) {
+export function PlanWorkspace({ snapshot, selection, onSelection, onQuickAdd, onPresent }: PlanWorkspaceProps) {
   const [newServiceDay, setNewServiceDay] = useState<string | null>(null)
   const select = (change: Partial<PlanSelection>) => onSelection({ ...selection, ...change })
   const present = (serviceId: Id) => {
@@ -52,6 +54,7 @@ export function PlanWorkspace({ snapshot, selection, onSelection, onPresent }: P
             serviceId={selection.serviceId}
             snapshot={snapshot}
             onBack={() => select({ serviceId: null })}
+            onQuickAdd={onQuickAdd}
             onPresent={() => present(selection.serviceId!)}
           />
         ) : (

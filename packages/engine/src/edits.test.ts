@@ -86,6 +86,26 @@ describe('applyServiceEdit', () => {
     expect(applyServiceEdit(service, { type: 'service.addSong', itemId: 'item-y', songId: 'test' })).toBe(service)
     expect(applyServiceEdit(added, { type: 'service.removeItem', itemId: 'item-x' }).items).toEqual(service.items)
   })
+
+  it('adds a song after a given item, or at the end when that item is gone', () => {
+    const after = applyServiceEdit(service, { type: 'service.addSong', itemId: 'item-x', songId: 'test', arrangementId: 'default', afterItemId: 'item-amazing-grace' })
+    expect(after.items.map((i) => i.id)).toEqual(['item-amazing-grace', 'item-x', 'item-john-3', 'item-it-is-well'])
+    const atEnd = applyServiceEdit(service, { type: 'service.addSong', itemId: 'item-x', songId: 'test', arrangementId: 'default', afterItemId: 'gone' })
+    expect(atEnd.items.at(-1)!.id).toBe('item-x')
+  })
+
+  it('sets and clears an item background, one item or several at once', () => {
+    const one = applyServiceEdit(service, { type: 'service.updateItem', itemId: 'item-john-3', changes: { backgroundId: 'candle' } })
+    expect(one.items[1]).toMatchObject({ backgroundId: 'candle', isLinked: false })
+    expect(applyServiceEdit(one, { type: 'service.updateItem', itemId: 'item-john-3', changes: { backgroundId: null } }).items[1]!.backgroundId).toBeUndefined()
+    expect(applyServiceEdit(service, { type: 'service.updateItem', itemId: 'item-john-3', changes: { backgroundId: '../x' } })).toBe(service)
+
+    const all = applyServiceEdit(one, { type: 'service.setBackground', itemIds: ['item-amazing-grace', 'item-john-3', 'gone'], backgroundId: 'candle' })
+    expect(all.items.map((i) => i.backgroundId)).toEqual(['candle', 'candle', undefined])
+    expect(all.items[1]).toBe(one.items[1])
+    expect(applyServiceEdit(all, { type: 'service.setBackground', itemIds: ['item-amazing-grace'], backgroundId: 'candle' })).toBe(all)
+    expect(applyServiceEdit(all, { type: 'service.setBackground', itemIds: ['item-amazing-grace', 'item-john-3'], backgroundId: null }).items.every((i) => !i.backgroundId)).toBe(true)
+  })
 })
 
 describe('themes', () => {

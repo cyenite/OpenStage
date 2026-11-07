@@ -1,14 +1,15 @@
 import { expect, test } from '@playwright/test'
 import { launch, mainText, orderItem, tempUserData } from './app'
 
-test('quick verse and passage sets use the bundled Bibles', async () => {
+test('a typed reference and passage sets use the bundled Bibles', async () => {
   const { app, operator, projector } = await launch(tempUserData())
   try {
-    const quick = operator.getByRole('textbox', { name: 'Quick verse' })
-    await quick.fill('ps 23 1')
-    await expect(operator.locator('.quick-verse-hint')).toHaveText('Psalms 23:1')
-    await quick.press('Enter')
+    const search = operator.getByRole('searchbox', { name: 'Search the library' })
+    await search.fill('ps 23 1')
+    await expect(operator.locator('.library-card').first()).toContainText('Psalms 23:1')
+    await search.press('Enter')
     await expect(orderItem(operator, /^BK Psalms 23:1/)).toBeVisible()
+    await expect(search).toHaveValue('')
     await operator.getByRole('button', { name: /Send to live/ }).click()
     await expect(mainText(projector)).toHaveText(/The LORD is my shepherd/)
 

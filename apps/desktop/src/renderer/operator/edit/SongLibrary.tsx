@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import type { SearchHit } from '@openstage/shared'
 import { useLibraryQuery } from '../engine'
 import { DropZone, ImportButton } from './DropZone'
@@ -7,7 +7,6 @@ import { LibraryTabs, type EditLibrary } from './LibraryTabs'
 interface SongLibraryProps {
   revision: number
   selectedId: string | null
-  searchRequest: number
   serviceSongIds: Set<string>
   onNew: () => void
   onSelect: (songId: string) => void
@@ -17,16 +16,11 @@ interface SongLibraryProps {
 
 export const songFileTypes = '.xml,.cho,.chordpro,.chopro,.crd,.pro,.pro6,.usr,.txt,.show,.sqlite,.db,.zip'
 
-export function SongLibrary({ revision, selectedId, searchRequest, serviceSongIds, onNew, onSelect, onImport, onLibrary }: SongLibraryProps) {
+export function SongLibrary({ revision, selectedId, serviceSongIds, onNew, onSelect, onImport, onLibrary }: SongLibraryProps) {
   const [text, setText] = useState('')
-  const input = useRef<HTMLInputElement>(null)
   const all = useLibraryQuery({ type: 'library.list', kind: 'songs' }, revision)
   const found = useLibraryQuery({ type: 'library.search', text, kind: 'songs', limit: 100 }, revision)
   const hits = text.trim() ? found : all
-
-  useEffect(() => {
-    if (searchRequest > 0) input.current?.focus()
-  }, [searchRequest])
 
   return (
     <nav className="sidebar song-library" aria-label="Song library">
@@ -42,7 +36,6 @@ export function SongLibrary({ revision, selectedId, searchRequest, serviceSongId
       <div className="search-field">
         <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
         <input
-          ref={input}
           type="search"
           value={text}
           aria-label="Search songs or lyrics"
@@ -86,10 +79,10 @@ function SongRow({ hit, isSelected, isInService, onSelect }: SongRowProps) {
   )
 }
 
-function Snippet({ text }: { text: string }) {
+export function Snippet({ text, className = 'song-row-snippet' }: { text: string; className?: string }) {
   const parts = text.split(/\u0001|\u0002/)
   return (
-    <span className="song-row-snippet">
+    <span className={className}>
       {parts.map((part, index) => (index % 2 === 1 ? <mark key={index}>{part}</mark> : <span key={index}>{part}</span>))}
     </span>
   )

@@ -69,7 +69,9 @@ test('the title bar is the window frame and switches appearance', async () => {
     await operator.getByRole('button', { name: 'Auto', exact: true }).click()
     await expect(operator.locator('html')).not.toHaveAttribute('data-theme', /./)
     await operator.keyboard.press('Control+k')
-    await expect(operator.getByRole('searchbox', { name: 'Search songs or lyrics' })).toBeFocused()
+    await expect(operator.getByRole('textbox', { name: 'Search everything to add' })).toBeFocused()
+    await operator.keyboard.press('Escape')
+    await expect(operator.getByRole('dialog', { name: 'Add to the service' })).toHaveCount(0)
   } finally {
     await app.close()
   }

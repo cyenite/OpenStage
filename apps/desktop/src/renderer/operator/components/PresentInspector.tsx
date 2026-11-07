@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react'
-import { formatCountdown, itemKinds, stageLayouts, timerRemaining, type OperatorSnapshot } from '@openstage/shared'
+import { formatCountdown, itemKinds, stageLayouts, timerRemaining, type OperatorSnapshot, type ServiceItem } from '@openstage/shared'
 import { dispatch } from '../engine'
+import { ItemInspector } from '../library/ItemInspector'
 
 const quickMessages = ['Wrap up', 'Chorus again', '5 minutes'] as const
 
-/** The right-hand column of Present in the design: what is next, the clocks, and the stage screen. */
-export function PresentInspector({ snapshot }: { snapshot: OperatorSnapshot }) {
+interface PresentInspectorProps {
+  snapshot: OperatorSnapshot
+  onEdit: (item: ServiceItem) => void
+}
+
+/** The right-hand column of Present in the design: the selected item, what is next, the clocks, and the stage screen. */
+export function PresentInspector({ snapshot, onEdit }: PresentInspectorProps) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 500)
@@ -13,6 +19,7 @@ export function PresentInspector({ snapshot }: { snapshot: OperatorSnapshot }) {
   }, [])
   return (
     <aside className="inspector present-inspector" aria-label="Inspector">
+      <ItemInspector snapshot={snapshot} onEdit={onEdit} />
       <UpNext snapshot={snapshot} />
       <Timers snapshot={snapshot} now={now} />
       <StageMessage snapshot={snapshot} now={now} />

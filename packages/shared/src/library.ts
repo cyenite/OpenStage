@@ -79,6 +79,8 @@ export interface ItemBase {
   /** Planned length; the timeline falls back to the kind's usual length. */
   minutes?: number
   themeId?: Id
+  /** Drawn in place of the theme's own fill while this item's slides show. */
+  backgroundId?: Id
   /** The template slot this item came from. */
   slotId?: Id
   /** True while the item still follows its template slot; any edit to the item clears it. */
@@ -223,6 +225,8 @@ export interface Deck {
   isPlaceholder: boolean
   /** The song's theme, else the service's; may point nowhere, and then the classic theme is used. */
   themeId: Id | null
+  /** The item's own background; may point nowhere, and then the theme's fill is used. */
+  backgroundId: Id | null
   title: string
   subtitle: string
   slides: DeckSlide[]

@@ -4,12 +4,9 @@ import {
   itemKind,
   itemKinds,
   itemMinutes,
-  newId,
   serviceStart,
-  type HeadingKind,
   type ItemChanges,
   type OperatorSnapshot,
-  type Service,
   type ServiceEdit,
   type ServiceItem,
   type SongOutline,
@@ -18,7 +15,8 @@ import {
 import { dispatch, useDocument, useLibraryQuery, useSongOutlines } from '../engine'
 import { CommitField } from '../edit/CommitField'
 import { languageName } from '../edit/languages'
-import { ReferenceInput } from '../edit/ReferenceInput'
+import { isMac } from '../chrome'
+import type { AddTarget } from '../library/results'
 import { NumberField } from '../edit/ThemeFields'
 import { clockTime, longDay } from './dates'
 
@@ -26,20 +24,18 @@ interface ServicePlanProps {
   serviceId: string
   snapshot: OperatorSnapshot
   onBack: () => void
+  onQuickAdd: (target: AddTarget) => void
   onPresent: () => void
 }
 
-const headingKinds = itemKinds.filter((k) => k.key !== 'song' && k.key !== 'scripture')
-
 /** The order of one service: fill placeholders, add parts, set lengths, notes and per-item overrides. */
-export function ServicePlan({ serviceId, snapshot, onBack, onPresent }: ServicePlanProps) {
+export function ServicePlan({ serviceId, snapshot, onBack, onQuickAdd, onPresent }: ServicePlanProps) {
   const { document: service, canUndo, canRedo, isLoaded } = useDocument('services', serviceId)
   const revision = snapshot.libraryRevision
   const songs = useLibraryQuery({ type: 'library.list', kind: 'songs' }, revision)
   const passages = useLibraryQuery({ type: 'library.list', kind: 'passages' }, revision)
   const outlines = useSongOutlines(service?.items.flatMap((i) => (i.type === 'song' ? [i.songId] : [])) ?? [], revision)
   const [dragFrom, setDragFrom] = useState<number | null>(null)
-  const [headingKind, setHeadingKind] = useState<HeadingKind>('sermon')
   const [isConfirmingDelete, setConfirmingDelete] = useState(false)
 
   if (!service) return <div className="editor-empty">{isLoaded ? 'This service is no longer in the library.' : 'Opening…'}</div>
@@ -53,6 +49,10 @@ export function ServicePlan({ serviceId, snapshot, onBack, onPresent }: ServiceP
     if (item.type === 'heading' || item.type === 'slot') return item.title
     if (item.type === 'song') return outlines.find((o) => o.id === item.songId)?.title ?? songs.find((s) => s.id === item.songId)?.title ?? 'Missing song'
     return passages.find((p) => p.id === item.passageId)?.title ?? 'Missing passage'
+  }
+  const quickAdd = (afterItemId: string | null) => {
+    const after = service.items.find((i) => i.id === afterItemId)
+    onQuickAdd({ service, afterItemId, afterTitle: after ? titleOf(after) : '', isOpen })
   }
 
   return (
@@ -110,48 +110,17 @@ export function ServicePlan({ serviceId, snapshot, onBack, onPresent }: ServiceP
               count={service.items.length}
               themes={snapshot.library.themes}
               outline={item.type === 'song' ? outlines.find((o) => o.id === item.songId) : undefined}
-              songs={songs.map((s) => ({ id: s.id, title: s.title }))}
-              service={service}
               onEdit={edit}
+              onChoose={() => quickAdd(item.id)}
             />
           </li>
         ))}
       </ol>
 
-      <div className="plan-add">
-        <span className="panel-title">Add</span>
-        <select aria-label="Add a song" value="" onChange={(e) => e.target.value && edit({ type: 'service.addSong', itemId: newId('song'), songId: e.target.value })}>
-          <option value="">+ Song</option>
-          {songs.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.title}
-            </option>
-          ))}
-        </select>
-        <ReferenceInput
-          className="plan-reference"
-          label="Add a passage"
-          placeholder="+ Passage: jn 3 16"
-          onSubmit={(passageRef, text) => {
-            const passageId = newId(text)
-            dispatch({ type: 'passage.create', passageId, ref: passageRef, translations: service.translations ?? [] })
-            edit({ type: 'service.addPassage', itemId: newId(text), passageId })
-          }}
-        />
-        <select aria-label="Kind of part to add" value={headingKind} onChange={(e) => setHeadingKind(e.target.value as HeadingKind)}>
-          {headingKinds.map((k) => (
-            <option key={k.key} value={k.key}>
-              {k.label}
-            </option>
-          ))}
-        </select>
-        <button
-          className="button-quiet button-small"
-          onClick={() => edit({ type: 'service.addHeading', itemId: newId(headingKind), kind: headingKind, title: itemKinds.find((k) => k.key === headingKind)!.label })}
-        >
-          + Part
-        </button>
-      </div>
+      <button className="plan-add" onClick={() => quickAdd(service.items.at(-1)?.id ?? null)}>
+        + Add a song, passage, part or background
+        <kbd>{isMac ? '⌘K' : 'Ctrl K'}</kbd>
+      </button>
     </div>
   )
 }
@@ -162,13 +131,12 @@ interface PlanItemProps {
   index: number
   count: number
   themes: Theme[]
-  songs: { id: string; title: string }[]
   outline: SongOutline | undefined
-  service: Service
   onEdit: (edit: ServiceEdit) => void
+  onChoose: () => void
 }
 
-function PlanItem({ item, title, index, count, themes, songs, outline, service, onEdit }: PlanItemProps) {
+function PlanItem({ item, title, index, count, themes, outline, onEdit, onChoose }: PlanItemProps) {
   const kind = itemKinds.find((k) => k.key === itemKind(item))!
   const update = (changes: ItemChanges) => onEdit({ type: 'service.updateItem', itemId: item.id, changes })
   const move = (to: number) => onEdit({ type: 'service.moveItem', itemId: item.id, toIndex: to })
@@ -196,26 +164,9 @@ function PlanItem({ item, title, index, count, themes, songs, outline, service, 
         {item.type === 'slot' && (
           <div className="slot-fill">
             <span className="muted">{item.rule || `Choose a ${item.kind}`}</span>
-            {item.kind === 'song' ? (
-              <select aria-label={`Choose the song for ${item.title}`} value="" onChange={(e) => e.target.value && onEdit({ type: 'service.fillSlot', itemId: item.id, songId: e.target.value })}>
-                <option value="">Choose a song…</option>
-                {songs.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.title}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <ReferenceInput
-                label={`Passage for ${item.title}`}
-                placeholder="Type a reference and Enter"
-                onSubmit={(ref, text) => {
-                  const passageId = newId(text)
-                  dispatch({ type: 'passage.create', passageId, ref, translations: service.translations ?? [] })
-                  onEdit({ type: 'service.fillSlot', itemId: item.id, passageId })
-                }}
-              />
-            )}
+            <button className="button-quiet button-small" aria-label={`Choose the ${item.kind === 'song' ? 'song' : 'passage'} for ${item.title}`} onClick={onChoose}>
+              {item.kind === 'song' ? 'Choose a song…' : 'Choose a passage…'}
+            </button>
           </div>
         )}
         {item.type === 'song' && outline && (

@@ -33,7 +33,7 @@ export function TitleBar({ title, subtitle, snapshot, workspace, appearance, win
       </Segmented>
       <button className="command-button" onClick={onSearch}>
         <SearchIcon />
-        <span className="command-label">Go to song or lyrics</span>
+        <span className="command-label">Add to the service</span>
         <kbd>{isMac ? '⌘K' : 'Ctrl K'}</kbd>
       </button>
       <div className="output-pills" aria-label="Outputs">

@@ -98,7 +98,7 @@ export type SongEdit =
 
 export type ServiceEdit =
   /** The engine fills in the song's first arrangement when `arrangementId` is left out. */
-  | { type: 'service.addSong'; itemId: Id; songId: Id; arrangementId?: Id }
+  | { type: 'service.addSong'; itemId: Id; songId: Id; arrangementId?: Id; afterItemId?: Id }
   | { type: 'service.removeItem'; itemId: Id }
   | { type: 'service.setTheme'; themeId: Id }
   | { type: 'service.addPassage'; itemId: Id; passageId: Id; afterItemId?: Id }
@@ -110,6 +110,8 @@ export type ServiceEdit =
   | { type: 'service.updateItem'; itemId: Id; changes: ItemChanges }
   /** Puts a song or passage in a template placeholder; the engine fills in the song's first arrangement. */
   | { type: 'service.fillSlot'; itemId: Id; songId?: Id; passageId?: Id; arrangementId?: Id }
+  /** One background for several items at once, as one undo step; null puts them back on their theme's fill. */
+  | { type: 'service.setBackground'; itemIds: Id[]; backgroundId: Id | null }
 
 /** Null clears an override. */
 export interface ItemChanges {
@@ -117,6 +119,7 @@ export interface ItemChanges {
   title?: string
   minutes?: number | null
   themeId?: Id | null
+  backgroundId?: Id | null
   languages?: string[] | null
   arrangementId?: Id
 }

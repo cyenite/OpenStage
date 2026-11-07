@@ -322,6 +322,23 @@ describe('Engine themes', () => {
     expect(projector.renders().at(-1)!.slide!.fill).toBeNull()
   })
 
+  it('draws an item background in place of the theme fill, in preview and live', () => {
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary })
+    const projector = fakePort()
+    engine.connect(projector.port, { role: 'output', outputId: 'projector' })
+    engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setTheme', themeId: 'paper' } })
+    const set = (backgroundId: string | null) =>
+      engine.dispatch({ type: 'service.edit', serviceId: 'sunday', edit: { type: 'service.updateItem', itemId: 'item-amazing-grace', changes: { backgroundId } } })
+    set('candle')
+    expect(engine.snapshot().previewRender.slide!.fill).toEqual({ kind: 'gradient', from: '#4A2E14', to: '#140C06', angle: 180 })
+    engine.dispatch({ type: 'live.take' })
+    expect(projector.renders().at(-1)!.slide!.fill).toMatchObject({ kind: 'gradient', from: '#4A2E14' })
+    set('gone')
+    expect(projector.renders().at(-1)!.slide!.fill).toEqual({ kind: 'color', color: '#F4EFE6' })
+    set(null)
+    expect(projector.renders().at(-1)!.slide!.fill).toEqual({ kind: 'color', color: '#F4EFE6' })
+  })
+
   it('updates the live slide when its theme is edited, and only deletes unused themes', () => {
     const removed: string[] = []
     const engine = new Engine({ bibles: testBibles, library: starterLibrary, onDocumentRemove: (kind, id) => removed.push(`${kind}/${id}`) })

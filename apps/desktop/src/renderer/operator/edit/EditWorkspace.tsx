@@ -20,12 +20,11 @@ export interface EditSelection {
 interface EditWorkspaceProps {
   snapshot: OperatorSnapshot
   selection: EditSelection
-  searchRequest: number
   onSelection: (selection: EditSelection) => void
 }
 
 /** What is open lives in the app shell, so switching to Present and back keeps it open. */
-export function EditWorkspace({ snapshot, selection, searchRequest, onSelection }: EditWorkspaceProps) {
+export function EditWorkspace({ snapshot, selection, onSelection }: EditWorkspaceProps) {
   const [isCreating, setCreating] = useState(false)
   const [importFiles, setImportFiles] = useState<File[] | null>(null)
   const importDialog = importFiles && (
@@ -98,7 +97,6 @@ export function EditWorkspace({ snapshot, selection, searchRequest, onSelection 
       <SongLibrary
         revision={snapshot.libraryRevision}
         selectedId={songId}
-        searchRequest={searchRequest}
         serviceSongIds={serviceSongIds}
         onNew={() => setCreating(true)}
         onSelect={(id) => select({ songId: id })}

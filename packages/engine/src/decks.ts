@@ -40,6 +40,7 @@ function buildDeck(item: ServiceItem, service: Service, library: Library, bibles
     minutes: itemMinutes(item),
     musicalKey: '',
     themeId: item.themeId ?? service.themeId ?? null,
+    backgroundId: item.backgroundId ?? null,
     isPlaceholder: false,
   }
 

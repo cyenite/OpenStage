@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { OperatorSnapshot } from '@openstage/shared'
+import type { Id, OperatorSnapshot, ServiceItem } from '@openstage/shared'
 import { ControlBar } from './components/ControlBar'
-import { Drawer } from './components/Drawer'
 import { MonitorPane } from './components/MonitorPane'
 import { PresentInspector } from './components/PresentInspector'
 import { ServiceOrder } from './components/ServiceOrder'
@@ -10,32 +9,49 @@ import { Timeline } from './components/Timeline'
 import { TitleBar } from './components/TitleBar'
 import { EditWorkspace, type EditSelection } from './edit/EditWorkspace'
 import { editLibraries } from './edit/LibraryTabs'
+import { EditorSheet, type SheetDocument } from './library/EditorSheet'
+import { LibraryDock } from './library/LibraryDock'
+import { QuickAdd } from './library/QuickAdd'
+import type { AddTarget } from './library/results'
 import { initialPlanSelection, PlanWorkspace, type PlanSelection } from './plan/PlanWorkspace'
 import { isMac, useAppearance, useWindowState, useWorkspace } from './chrome'
 import { useShortcuts } from './useShortcuts'
-import { useSnapshot } from './engine'
+import { dispatch, useSnapshot } from './engine'
 
 export function App() {
   const snapshot = useSnapshot()
   const windowState = useWindowState()
   const [workspace, setWorkspace] = useWorkspace()
   const [appearance, setAppearance] = useAppearance()
-  const [searchRequest, setSearchRequest] = useState(0)
+  const [addTarget, setAddTarget] = useState<AddTarget | null>(null)
+  const [sheet, setSheet] = useState<SheetDocument | null>(null)
   const [planSelection, setPlanSelection] = useState<PlanSelection>(initialPlanSelection)
   const [editSelection, setEditSelection] = useState<EditSelection>({ library: 'songs', songId: null, themeId: null, passageId: null })
-  useShortcuts(workspace === 'present' ? snapshot : null)
+  // Esc closes an overlay, and must never also clear the screens.
+  const isOverlayOpen = !!addTarget || !!sheet
+  useShortcuts(workspace === 'present' && !isOverlayOpen ? snapshot : null)
 
-  const openSearch = () => {
+  /** Adds after the selected item of the open service, or into another service from Plan. */
+  const openQuickAdd = (target?: AddTarget) => {
+    if (!snapshot) return
+    const { service, state, decks } = snapshot
+    const afterItemId = state.selectedItemId
+    setAddTarget(target ?? { service, afterItemId, afterTitle: decks.find((d) => d.itemId === afterItemId)?.title ?? '', isOpen: true })
+  }
+  const openEditor = (item: ServiceItem) => {
+    if (item.type === 'song') setSheet({ kind: 'song', id: item.songId })
+    if (item.type === 'scripture') setSheet({ kind: 'passage', id: item.passageId })
+  }
+  const openTheme = (themeId: Id) => {
+    setEditSelection((selection) => ({ ...selection, library: 'themes', themeId }))
     setWorkspace('edit')
-    setEditSelection((selection) => ({ ...selection, library: 'songs' }))
-    setSearchRequest((n) => n + 1)
   }
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((isMac ? event.metaKey : event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
-        openSearch()
+        if (!isOverlayOpen) openQuickAdd()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -60,13 +76,17 @@ export function App() {
             workspace={workspace}
             appearance={appearance}
             windowState={windowState}
-            onSearch={openSearch}
+            onSearch={() => openQuickAdd()}
             onWorkspace={setWorkspace}
             onAppearance={setAppearance}
           />
-          {workspace === 'present' && <PresentWorkspace snapshot={snapshot} onOpenSongs={() => setWorkspace('edit')} />}
-          {workspace === 'edit' && <EditWorkspace snapshot={snapshot} selection={editSelection} searchRequest={searchRequest} onSelection={setEditSelection} />}
-          {workspace === 'plan' && <PlanWorkspace snapshot={snapshot} selection={planSelection} onSelection={setPlanSelection} onPresent={() => setWorkspace('present')} />}
+          {workspace === 'present' && <PresentWorkspace snapshot={snapshot} onAdd={() => openQuickAdd()} onEdit={openEditor} onOpenSongs={() => setWorkspace('edit')} />}
+          {workspace === 'edit' && <EditWorkspace snapshot={snapshot} selection={editSelection} onSelection={setEditSelection} />}
+          {workspace === 'plan' && (
+            <PlanWorkspace snapshot={snapshot} selection={planSelection} onSelection={setPlanSelection} onQuickAdd={openQuickAdd} onPresent={() => setWorkspace('present')} />
+          )}
+          {addTarget && <QuickAdd snapshot={snapshot} target={addTarget} onClose={() => setAddTarget(null)} />}
+          {sheet && <EditorSheet key={`${sheet.kind}/${sheet.id}`} snapshot={snapshot} document={sheet} onClose={() => setSheet(null)} onOpenTheme={openTheme} />}
         </>
       ) : (
         <ConnectingScreen />
@@ -84,7 +104,14 @@ function ConnectingScreen() {
   )
 }
 
-function PresentWorkspace({ snapshot, onOpenSongs }: { snapshot: OperatorSnapshot; onOpenSongs: () => void }) {
+interface PresentWorkspaceProps {
+  snapshot: OperatorSnapshot
+  onAdd: () => void
+  onEdit: (item: ServiceItem) => void
+  onOpenSongs: () => void
+}
+
+function PresentWorkspace({ snapshot, onAdd, onEdit, onOpenSongs }: PresentWorkspaceProps) {
   const { state, decks } = snapshot
   const describe = (ref: typeof state.preview) => {
     const deck = decks.find((d) => d.itemId === ref?.itemId)
@@ -93,17 +120,22 @@ function PresentWorkspace({ snapshot, onOpenSongs }: { snapshot: OperatorSnapsho
   }
   return (
     <>
-      <ServiceOrder snapshot={snapshot} onOpenSongs={onOpenSongs} />
+      <ServiceOrder snapshot={snapshot} onAdd={onAdd} onEdit={onEdit} onOpenSongs={onOpenSongs} />
       <main className="main">
         <section className="monitors" aria-label="Preview and live">
           <MonitorPane kind="preview" caption={describe(state.preview)} render={snapshot.previewRender} />
-          <MonitorPane kind="live" caption={describe(state.live.slide)} render={snapshot.liveRender} />
+          <MonitorPane
+            kind="live"
+            caption={describe(state.live.slide)}
+            render={snapshot.liveRender}
+            onDropBackground={(backgroundId) => dispatch({ type: 'background.set', backgroundId })}
+          />
         </section>
         <ControlBar snapshot={snapshot} />
         <SlideGrid snapshot={snapshot} />
-        <Drawer snapshot={snapshot} />
+        <LibraryDock snapshot={snapshot} />
       </main>
-      <PresentInspector snapshot={snapshot} />
+      <PresentInspector snapshot={snapshot} onEdit={onEdit} />
       <Timeline snapshot={snapshot} />
     </>
   )

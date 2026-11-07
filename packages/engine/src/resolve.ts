@@ -3,6 +3,8 @@ import {
   layoutSlide,
   lookup,
   shortLabel,
+  type BackgroundRender,
+  type SlideRender,
   type StageRender,
   type StageSection,
   type Deck,
@@ -51,6 +53,10 @@ function stageRender(state: EngineState, decks: Deck[], slideRef: SlideRef | nul
   }
 }
 
+function withFill(slide: SlideRender, fill: BackgroundRender | undefined): SlideRender {
+  return fill ? { ...slide, fill } : slide
+}
+
 export interface ResolveContext {
   decks: Deck[]
   library: Library
@@ -65,7 +71,9 @@ export function resolveRender(
   const shows = (layer: LayerKey) => (profile.layers as readonly LayerKey[]).includes(layer)
   const themes = context.library.themes
   const slide = shows('slide') && profile.kind === 'audience' ? findSlide(context.decks, slideRef) : null
-  const theme = lookup(themes, findDeck(context.decks, slideRef)?.themeId) ?? lookup(themes, classicTheme.id) ?? classicTheme
+  const deck = findDeck(context.decks, slideRef)
+  const theme = lookup(themes, deck?.themeId) ?? lookup(themes, classicTheme.id) ?? classicTheme
+  const itemFill = lookup(context.library.backgrounds, deck?.backgroundId)?.render
   const background = shows('background') && state.live.background ? context.library.backgrounds[state.live.background]?.render ?? null : null
   const lowerThird = shows('lowerThird') && state.live.lowerThird ? context.library.lowerThirds[state.live.lowerThird] ?? null : null
 
@@ -74,7 +82,7 @@ export function resolveRender(
     outputId: profile.id,
     transitionMs: profile.transitionMs,
     background,
-    slide: slide && slideRef ? layoutSlide(theme, profile.id, slide, `${slideRef.itemId}#${slideRef.index}`) : null,
+    slide: slide && slideRef ? withFill(layoutSlide(theme, profile.id, slide, `${slideRef.itemId}#${slideRef.index}`), itemFill) : null,
     lowerThird: lowerThird ? { key: lowerThird.id, title: lowerThird.title, subtitle: lowerThird.subtitle } : null,
     stage: profile.kind === 'stage' ? stageRender(state, context.decks, slideRef) : null,
   }
