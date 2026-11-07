@@ -21,6 +21,8 @@ export function ThemeLibrary({ themes, service, selectedId, onLibrary, onSelect 
     <nav className="sidebar theme-library" aria-label="Theme library">
       <div className="sidebar-head">
         <LibraryTabs library="themes" onLibrary={onLibrary} />
+      </div>
+      <div className="sidebar-actions">
         <button className="button-small" onClick={create}>
           New theme
         </button>

@@ -10,7 +10,12 @@ import {
   type ServiceSummary,
   type ServiceTemplate,
   type TemplateEdit,
+  type BibleInfo,
   type BibleText,
+  type ImportDecision,
+  type ImportFile,
+  type ImportReport,
+  newId,
   type PassageEdit,
   type QueryResult,
   type ClientHello,
@@ -35,6 +40,9 @@ import {
   type ThemeEdit,
 } from '@openstage/shared'
 import { bibleInfo } from './bibles/store'
+import { readFiles } from './import/detect'
+import { findDuplicate, isBibleCode, mergeInto, planItems, songFromImport } from './import/plan'
+import type { Parsed } from './import/types'
 import { buildDecks, scriptureSlides } from './decks'
 import { applyPassageEdit, applyServiceEdit, applySongEdit, applyTemplateEdit, applyThemeEdit, createPassage, createSong, createTemplate, createTheme, isPassageRef } from './edits'
 import { outputs, resolveRender, type OutputId } from './resolve'
@@ -91,6 +99,7 @@ export interface EngineOptions {
   onStateChange?: (state: EngineState) => void
   onDocumentChange?: <K extends DocumentKind>(kind: K, document: DocumentTypes[K]) => void
   onDocumentRemove?: (kind: DocumentKind, id: Id) => void
+  onBibleImported?: (bible: BibleText) => void
 }
 
 const noService: Service = { id: '', name: 'No service', items: [] }
@@ -114,11 +123,14 @@ export class Engine {
   private readonly options: EngineOptions
   private readonly clients = new Set<Client>()
   private readonly histories = new Map<string, History>()
+  private readonly imports = new Map<Id, Parsed[]>()
+  private bibleList: BibleText[]
   private readonly channels = new Map<OutputId, OutputChannel>()
 
   constructor(options: EngineOptions) {
     this.options = options
     this.library = options.library
+    this.bibleList = options.bibles ?? []
     const services = Object.values(options.library.services).sort(byName)
     const serviceId = options.restored?.serviceId ?? lookup(options.library.services, options.serviceId)?.id ?? services[0]?.id ?? null
     this.decks = buildDecks(lookup(this.library.services, serviceId) ?? noService, this.library, this.bibles)
@@ -140,7 +152,7 @@ export class Engine {
   }
 
   private get bibles(): BibleText[] {
-    return this.options.bibles ?? []
+    return this.bibleList
   }
 
   get documents(): Library {
@@ -282,6 +294,8 @@ export class Engine {
       const passage = lookup(this.library.passages, query.passageId)
       return { type: 'slides', slides: passage?.ref ? scriptureSlides(passage, this.bibles) : [] }
     }
+    if (query?.type === 'import.preview') return { type: 'importPlan', plan: this.previewImport(query.files) }
+    if (query?.type === 'import.apply') return { type: 'importReport', report: this.applyImport(query.importId, query.decisions, query.bibles) }
     if (query?.type === 'song.outlines') {
       const ids = Array.isArray(query.songIds) ? query.songIds : []
       const outlines = ids.flatMap((id) => {
@@ -294,6 +308,62 @@ export class Engine {
     if (query.type === 'library.list') return hits(index.list(query.kind))
     if (query.type === 'library.search' && typeof query.text === 'string') return hits(index.search(query.text, { kind: query.kind, limit: query.limit }))
     return hits([])
+  }
+
+  private previewImport(files: unknown): { importId: Id; items: ReturnType<typeof planItems> } {
+    const sources = (Array.isArray(files) ? files : [])
+      .filter((f): f is ImportFile => typeof f?.name === 'string' && f.data instanceof ArrayBuffer)
+      .map((f) => ({ name: f.name, bytes: new Uint8Array(f.data) }))
+    const parsed = readFiles(sources)
+    const importId = newId('import')
+    this.imports.set(importId, parsed)
+    while (this.imports.size > 5) this.imports.delete(this.imports.keys().next().value!)
+    return { importId, items: planItems(parsed, this.library, this.bibles) }
+  }
+
+  /**
+   * Nothing is overwritten without a choice: new items are added unless skipped, duplicates are
+   * skipped unless the operator chose Merge or Keep both, and a Bible needs a code not in use.
+   */
+  private applyImport(importId: Id, decisions: Record<string, ImportDecision>, bibleDetails: Record<string, BibleInfo>): ImportReport {
+    const report: ImportReport = { added: [], merged: [], skipped: [], failed: [] }
+    const parsed = this.imports.get(importId)
+    if (!parsed) return { ...report, failed: [{ title: 'Import', reason: 'This import has expired; drop the files again.' }] }
+    this.imports.delete(importId)
+    parsed.forEach((entry, index) => {
+      const key = `i${index}`
+      const choice = decisions?.[key]
+      if (entry.kind === 'unreadable') return void report.failed.push({ title: entry.file.replace(/^.*\//, ''), reason: entry.reason })
+      if (entry.kind === 'bible') {
+        const details = bibleDetails?.[key]
+        const info = { ...bibleInfo(entry.bible), ...details }
+        if (choice === 'skip' || (choice === undefined && this.bibles.some((b) => b.code === entry.bible.code))) return void report.skipped.push(info.name)
+        if (!isBibleCode(info.code) || !String(info.name ?? '').trim() || !/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/.test(String(info.language))) {
+          return void report.failed.push({ title: info.name || entry.file, reason: 'A Bible needs a code of letters and digits, a name and a language code.' })
+        }
+        if (this.bibles.some((b) => b.code === info.code)) return void report.failed.push({ title: info.name, reason: `The code ${info.code} is already in use.` })
+        const bible: BibleText = { ...entry.bible, code: info.code, name: info.name.trim(), language: info.language, notice: String(info.notice ?? '').trim() }
+        this.bibleList = [...this.bibleList, bible]
+        this.options.onBibleImported?.(bible)
+        return void report.added.push(`${bible.name} (${bible.code})`)
+      }
+      const duplicate = findDuplicate(entry.song, this.library)
+      const decision = choice ?? (duplicate ? 'skip' : 'add')
+      if (decision === 'skip') return void report.skipped.push(entry.song.title)
+      if (decision === 'merge' && duplicate) {
+        const merged = mergeInto(lookup(this.library.songs, duplicate.song.id)!, entry.song)
+        this.histories.delete(`songs/${merged.id}`)
+        this.store('songs', merged)
+        return void report.merged.push(merged.title)
+      }
+      const song = songFromImport(newId(entry.song.title), entry.song)
+      this.store('songs', song)
+      report.added.push(song.title)
+    })
+    this.libraryRevision++
+    this.decks = buildDecks(this.service, this.library, this.bibles)
+    this.publish()
+    return report
   }
 
   /** Only installed Bibles, in the order asked; with none of them, the service's first, else the first installed. */

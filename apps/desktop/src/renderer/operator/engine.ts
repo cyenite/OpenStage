@@ -46,6 +46,19 @@ function useQuery<T>(query: LibraryQuery | null, revision: number, pick: (result
   return value
 }
 
+/** One request and its answer, for queries the UI runs on demand rather than follows. */
+export function ask(query: LibraryQuery): Promise<QueryResult> {
+  return new Promise((resolve) => {
+    const requestId = nextRequestId++
+    const stop = engine.subscribe((message) => {
+      if (message.type !== 'result' || message.requestId !== requestId) return
+      stop()
+      resolve(message.result)
+    })
+    engine.send({ type: 'query', requestId, query })
+  })
+}
+
 const noHits: SearchHit[] = []
 const noOutlines: SongOutline[] = []
 const noSlides: DeckSlide[] = []

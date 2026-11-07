@@ -146,7 +146,50 @@ export type LibraryQuery =
   | { type: 'library.list'; kind: DocumentKind }
   | { type: 'scripture.slides'; passageId: Id }
   | { type: 'song.outlines'; songIds: Id[] }
+  /** Reads dropped or picked files and says what importing them would do; nothing is saved yet. */
+  | { type: 'import.preview'; files: ImportFile[] }
+  /** Carries out a preview with the operator's choices and reports what happened. */
+  | { type: 'import.apply'; importId: Id; decisions: Record<string, ImportDecision>; bibles: Record<string, BibleInfo> }
 
+export interface ImportFile {
+  name: string
+  data: ArrayBuffer
+}
+
+/** Add a new item, merge into the matching song (its lyrics stay; empty details are filled), keep both, or skip. */
+export type ImportDecision = 'add' | 'merge' | 'keepBoth' | 'skip'
+
+export type ImportStatus = 'new' | 'duplicate' | 'unreadable'
+
+export interface ImportItem {
+  key: string
+  file: string
+  kind: 'song' | 'bible'
+  /** The format it was read as, like "OpenLyrics" or "ChordPro". */
+  format: string
+  title: string
+  status: ImportStatus
+  /** Why it is a duplicate, why it could not be read, or a caution about the format. */
+  reason: string
+  /** First lines of each section, for Compare. */
+  preview: string[]
+  /** Set for duplicates. */
+  existing?: { id: Id; title: string; preview: string[] }
+  /** Set for Bibles: what the file says about itself, for the operator to confirm. */
+  bible?: BibleInfo & { books: number; verses: number }
+}
+
+export interface ImportPlan {
+  importId: Id
+  items: ImportItem[]
+}
+
+export interface ImportReport {
+  added: string[]
+  merged: string[]
+  skipped: string[]
+  failed: { title: string; reason: string }[]
+}
 /** Just enough of a song to offer its arrangements and languages as service-item overrides. */
 export interface SongOutline {
   id: Id
@@ -159,6 +202,8 @@ export type QueryResult =
   | { type: 'hits'; hits: SearchHit[] }
   | { type: 'slides'; slides: DeckSlide[] }
   | { type: 'outlines'; outlines: SongOutline[] }
+  | { type: 'importPlan'; plan: ImportPlan }
+  | { type: 'importReport'; report: ImportReport }
 
 export interface SearchHit {
   kind: DocumentKind

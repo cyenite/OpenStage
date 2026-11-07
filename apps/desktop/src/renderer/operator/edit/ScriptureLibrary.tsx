@@ -1,5 +1,6 @@
 import { newId, type Id, type Service } from '@openstage/shared'
 import { dispatch, useLibraryQuery } from '../engine'
+import { DropZone, ImportButton } from './DropZone'
 import { LibraryTabs, type EditLibrary } from './LibraryTabs'
 import { ReferenceInput } from './ReferenceInput'
 
@@ -9,9 +10,10 @@ interface ScriptureLibraryProps {
   selectedId: Id | null
   onLibrary: (library: EditLibrary) => void
   onSelect: (passageId: Id) => void
+  onImport: (files: File[]) => void
 }
 
-export function ScriptureLibrary({ service, revision, selectedId, onLibrary, onSelect }: ScriptureLibraryProps) {
+export function ScriptureLibrary({ service, revision, selectedId, onLibrary, onSelect, onImport }: ScriptureLibraryProps) {
   const passages = useLibraryQuery({ type: 'library.list', kind: 'passages' }, revision)
   const inService = new Set(service.items.flatMap((i) => (i.type === 'scripture' ? [i.passageId] : [])))
   return (
@@ -29,6 +31,10 @@ export function ScriptureLibrary({ service, revision, selectedId, onLibrary, onS
           onSelect(passageId)
         }}
       />
+      <div className="sidebar-actions">
+        <ImportButton label="Import a Bible" accept=".xml,.usfm,.sfm,.usx,.zip" onFiles={onImport} />
+      </div>
+      <DropZone hint="Drop OSIS, Zefania, USFX, USX or USFM files, or an eBible.org download, to add a Bible." onFiles={onImport}>
       <ul className="song-list">
         {passages.map((hit) => (
           <li key={hit.id}>
@@ -39,6 +45,7 @@ export function ScriptureLibrary({ service, revision, selectedId, onLibrary, onS
           </li>
         ))}
       </ul>
+      </DropZone>
     </nav>
   )
 }

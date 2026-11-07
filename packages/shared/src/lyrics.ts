@@ -113,6 +113,11 @@ function headingAt(lines: string[], index: number): { kind: SectionKind; label: 
   return { kind, label }
 }
 
+/** The kind a section heading names, Swahili included; anything else is Other. */
+export function sectionKindFor(label: string): SectionKind {
+  return kindOf(label) ?? 'other'
+}
+
 function kindOf(label: string): SectionKind | null {
   const word = label.toLowerCase().replace(/\s*\d+$/, '').trim()
   return sectionKinds.find((k) => (k.aliases as readonly string[]).includes(word))?.key ?? null

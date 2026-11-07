@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Id, OperatorSnapshot } from '@openstage/shared'
 import type { EditLibrary } from './LibraryTabs'
+import { ImportDialog } from './ImportDialog'
 import { NewSongDialog } from './NewSongDialog'
 import { ScriptureEditor } from './ScriptureEditor'
 import { ScriptureLibrary } from './ScriptureLibrary'
@@ -26,6 +27,10 @@ interface EditWorkspaceProps {
 /** What is open lives in the app shell, so switching to Present and back keeps it open. */
 export function EditWorkspace({ snapshot, selection, searchRequest, onSelection }: EditWorkspaceProps) {
   const [isCreating, setCreating] = useState(false)
+  const [importFiles, setImportFiles] = useState<File[] | null>(null)
+  const importDialog = importFiles && (
+    <ImportDialog key={importFiles.map((f) => f.name).join('|')} files={importFiles} installedBibles={snapshot.bibles.map((b) => b.code)} onClose={() => setImportFiles(null)} />
+  )
   const select = (change: Partial<EditSelection>) => onSelection({ ...selection, ...change })
   const openTheme = (themeId: Id) => select({ library: 'themes', themeId })
   const serviceSongIds = new Set(snapshot.service.items.flatMap((item) => (item.type === 'song' ? [item.songId] : [])))
@@ -40,6 +45,7 @@ export function EditWorkspace({ snapshot, selection, searchRequest, onSelection 
           selectedId={selection.passageId}
           onLibrary={(library) => select({ library })}
           onSelect={(passageId) => select({ passageId })}
+          onImport={setImportFiles}
         />
         <main className="main editor-main">
           {selection.passageId ? (
@@ -58,6 +64,7 @@ export function EditWorkspace({ snapshot, selection, searchRequest, onSelection 
             </div>
           )}
         </main>
+        {importDialog}
       </>
     )
   }
@@ -95,6 +102,7 @@ export function EditWorkspace({ snapshot, selection, searchRequest, onSelection 
         serviceSongIds={serviceSongIds}
         onNew={() => setCreating(true)}
         onSelect={(id) => select({ songId: id })}
+        onImport={setImportFiles}
         onLibrary={(library) => select({ library })}
       />
       <main className="main editor-main">
@@ -112,6 +120,7 @@ export function EditWorkspace({ snapshot, selection, searchRequest, onSelection 
           <EmptyEditor onNew={() => setCreating(true)} />
         )}
       </main>
+      {importDialog}
       {isCreating && (
         <NewSongDialog
           onClose={() => setCreating(false)}

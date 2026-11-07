@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import type { ClientMessage, EngineConnect, EngineMessage, EngineState } from '@openstage/shared'
-import { loadBibles } from './bibles/store'
+import { loadBibles, saveBible } from './bibles/store'
 import { Engine, type ClientPort } from './engine'
 import { atomicWriteJson, CoalescingWriter, loadLiveState } from './persistence'
 import { starterLibrary } from './starter-library'
@@ -51,6 +51,9 @@ export async function startEngineProcess(): Promise<void> {
     onDocumentChange: (kind, document) => {
       store.save(kind, document)
       index.upsert(kind, document)
+    },
+    onBibleImported: (bible) => {
+      saveBible(join(dataDir, 'bibles'), bible).catch(report('an imported Bible'))
     },
     onDocumentRemove: (kind, id) => {
       index.remove(kind, id)

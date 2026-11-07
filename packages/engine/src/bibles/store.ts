@@ -1,6 +1,6 @@
-import { readdir, readFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { gunzipSync } from 'node:zlib'
+import { gunzipSync, gzipSync } from 'node:zlib'
 import type { BibleInfo, BibleText } from '@openstage/shared'
 
 /**
@@ -28,4 +28,12 @@ export async function loadBibles(folders: string[], onProblem: (file: string, er
 
 export function bibleInfo({ code, name, notice, language }: BibleText): BibleInfo {
   return { code, name, notice, language }
+}
+
+/** Writes an imported Bible beside the others as `<code>.json.gz`, through a temp file so a crash leaves no half file. */
+export async function saveBible(folder: string, bible: BibleText): Promise<void> {
+  await mkdir(folder, { recursive: true })
+  const path = join(folder, `${bible.code.toLowerCase()}.json.gz`)
+  await writeFile(`${path}.tmp`, gzipSync(JSON.stringify(bible), { level: 9 }))
+  await rename(`${path}.tmp`, path)
 }

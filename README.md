@@ -76,6 +76,14 @@ folder.
 | `e2e` | Playwright tests that launch the real Electron app |
 | `docs` | Research, blueprint and plans |
 
+## Importing
+
+Edit → Songs → Import songs (or drop files on the library) reads OpenLyrics, ChordPro, SongSelect `.usr`/`.txt`,
+plain text, FreeShow `.show`, OpenLP `songs.sqlite`, ProPresenter 6 and EasyWorship 6/7 (`Songs.db` with
+`SongWords.db`). Edit → Scripture → Import a Bible reads OSIS, Zefania, USFX, USX and USFM, including
+eBible.org downloads. Every import shows what it found first; duplicates are skipped unless you choose
+Merge or Keep both.
+
 ## Licence and content
 
 OpenStage is licensed under the [GNU GPL v3 or later](LICENSE). Being GPL, it may reuse code from
