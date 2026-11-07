@@ -4,6 +4,15 @@ import { bibleBooks, type BibleInfo, type BibleText, type BookId } from '@openst
 export type BibleFormat = 'osis' | 'usfx' | 'usx' | 'zefania'
 
 const byOsis = new Map<string, BookId>(bibleBooks.map((b) => [b.osis, b.usfm]))
+const chapterCounts = new Map<string, number>(bibleBooks.map((b) => [b.usfm, b.chapters]))
+
+/** The longest chapter (Psalm 119) has 176 verses; anything past this is a damaged or hostile file. */
+const verseLimit = 200
+
+/** Keeps a damaged or crafted file from creating huge sparse arrays: chapters within the book, verses within reason. */
+function isInRange(book: BookId, chapter: number, verse: number): boolean {
+  return Number.isInteger(chapter) && Number.isInteger(verse) && chapter >= 1 && verse >= 1 && chapter <= (chapterCounts.get(book) ?? 0) && verse <= verseLimit
+}
 const byUsfm = new Set<string>(bibleBooks.map((b) => b.usfm))
 
 /** Footnotes, cross references, headings and titles are not verse text. */
@@ -35,7 +44,7 @@ export function parseBible(xml: string, format: BibleFormat, info: BibleInfo): B
   const flush = () => {
     const text = buffer.replace(/\s+/g, ' ').trim()
     buffer = ''
-    if (!book || chapter < 1 || verse < 1 || !text) return
+    if (!book || !text || !isInRange(book, chapter, verse)) return
     const chapters = (books[book] ??= [])
     const verses = (chapters[chapter - 1] ??= [])
     verses[verse - 1] = verses[verse - 1] ? `${verses[verse - 1]} ${text}` : text
@@ -139,7 +148,7 @@ export function parseUsfm(files: string[], info: BibleInfo): BibleText {
     const flush = () => {
       const text = buffer.replace(/\s+/g, ' ').trim()
       buffer = ''
-      if (!book || chapter < 1 || verse < 1 || !text) return
+      if (!book || !text || !isInRange(book, chapter, verse)) return
       const verses = ((books[book] ??= [])[chapter - 1] ??= [])
       verses[verse - 1] = verses[verse - 1] ? `${verses[verse - 1]} ${text}` : text
     }

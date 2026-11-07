@@ -31,7 +31,7 @@ function sqlite(build: (db: DatabaseSync) => void): Uint8Array {
   return data
 }
 
-function zip(entries: { name: string; data: string }[]): Uint8Array {
+function zip(entries: { name: string; data: string; declaredSize?: number }[]): Uint8Array {
   const parts: Buffer[] = []
   const directory: Buffer[] = []
   let offset = 0
@@ -43,13 +43,13 @@ function zip(entries: { name: string; data: string }[]): Uint8Array {
     local.writeUInt32LE(0x04034b50, 0)
     local.writeUInt16LE(8, 8)
     local.writeUInt32LE(packed.length, 18)
-    local.writeUInt32LE(raw.length, 22)
+    local.writeUInt32LE(entry.declaredSize ?? raw.length, 22)
     local.writeUInt16LE(name.length, 26)
     const central = Buffer.alloc(46)
     central.writeUInt32LE(0x02014b50, 0)
     central.writeUInt16LE(8, 10)
     central.writeUInt32LE(packed.length, 20)
-    central.writeUInt32LE(raw.length, 24)
+    central.writeUInt32LE(entry.declaredSize ?? raw.length, 24)
     central.writeUInt16LE(name.length, 28)
     central.writeUInt32LE(offset, 42)
     parts.push(local, name, packed)
@@ -208,6 +208,23 @@ describe('Bible formats', () => {
     const [entry] = readFiles([{ name: 'swhonen_usfm.zip', bytes: archive }])
     expect(entry).toMatchObject({ kind: 'bible', format: 'USFM', bible: { code: 'SWHONEN', language: 'sw', notice: 'Copyright © Biblica. CC BY-SA 4.0' } })
     expect(entry?.kind === 'bible' && Object.keys(entry.bible.books)).toEqual(['JHN', 'ACT'])
+  })
+})
+
+describe('limits on hostile files', () => {
+  it('refuses a ZIP entry that inflates past the size it declares', () => {
+    expect(() => unzip(zip([{ name: 'bomb.usfm', data: '\0'.repeat(1_000_000), declaredSize: 10 }]))).toThrow()
+    expect(() => unzip(zip([{ name: 'short.usfm', data: 'abc', declaredSize: 100 }]))).toThrow(/not the size/)
+    expect(readFiles([{ name: 'bomb.zip', bytes: zip([{ name: 'a.usfm', data: '\0'.repeat(100_000), declaredSize: 4 }]) }])[0]).toMatchObject({ kind: 'unreadable', format: 'ZIP' })
+  })
+
+  it('drops chapters past the book and verses past 200 instead of building huge arrays', () => {
+    const info = { code: 'T', name: 'T', language: 'en', notice: '' }
+    const usfm = parseUsfm(['\\id JHN\n\\c 3\n\\v 16 Kept\n\\v 99999999 Dropped\n\\c 999999\n\\v 1 Dropped too'], info)
+    expect(usfm.books.JHN?.length).toBe(3)
+    expect(usfm.books.JHN?.[2]?.length).toBe(16)
+    const usx = parseBible('<usx><book code="JHN"/><chapter number="2000000"/><para style="p"><verse number="5" sid="x"/>Gone<verse eid="x"/></para></usx>', 'usx', info)
+    expect(usx.books).toEqual({})
   })
 })
 
