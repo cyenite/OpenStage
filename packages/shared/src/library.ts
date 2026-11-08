@@ -233,6 +233,8 @@ export interface Deck {
 }
 
 export interface DeckSlide {
+  /** For scripture, the first verse on the slide. */
+  verse?: number
   label: string
   kind: SectionKind
   lines: string[]

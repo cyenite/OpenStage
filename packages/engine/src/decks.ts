@@ -8,6 +8,8 @@ import {
   type BibleText,
   type Deck,
   type DeckSlide,
+  type Id,
+  type InstantSource,
   type Library,
   type ScripturePassage,
   type Service,
@@ -19,6 +21,20 @@ import {
 
 export function buildDecks(service: Service, library: Library, bibles: BibleText[] = []): Deck[] {
   return service.items.map((item) => buildDeck(item, service, library, bibles))
+}
+
+/** Decks for what Preview and Live show from the library; they take the service's theme like its own items. */
+export function buildInstantDecks(instant: Record<Id, InstantSource>, service: Service, library: Library, bibles: BibleText[] = []): Deck[] {
+  return Object.entries(instant).map(([id, source]) => {
+    if (source.type === 'song') {
+      const arrangementId = source.arrangementId ?? lookup(library.songs, source.songId)?.arrangements[0]?.id ?? ''
+      return buildDeck({ id, type: 'song', songId: source.songId, arrangementId }, service, library, bibles)
+    }
+    const passage: ScripturePassage = { id, ref: source.ref, splitLong: true, translations: source.translations, versesPerSlide: source.versesPerSlide }
+    const language = bibles.find((b) => b.code === source.translations[0])?.language ?? 'en'
+    const base = { itemId: id, kind: 'scripture' as const, notes: '', minutes: 0, musicalKey: '', themeId: service.themeId ?? null, backgroundId: null, isPlaceholder: false }
+    return { ...base, title: formatReference(source.ref, language), subtitle: source.translations.join(' + '), slides: scriptureSlides(passage, bibles) }
+  })
 }
 
 export function scriptureSlides(passage: ScripturePassage, bibles: BibleText[]): DeckSlide[] {

@@ -14,7 +14,7 @@ import {
   type ServiceEdit,
   type ServiceItem,
 } from '@openstage/shared'
-import { dispatch, useLibraryQuery } from '../engine'
+import { dispatch, useLibrarySearch } from '../engine'
 
 /** Declaration order is chip order. Live filters act on the screens now and never land in the service. */
 export const libraryFilters = [
@@ -33,7 +33,7 @@ export type LibraryResult =
   | { filter: 'songs'; key: string; id: Id; title: string; detail: string; snippet: string }
   | { filter: 'scripture'; key: string; id: Id; title: string; detail: string; snippet: string }
   /** A reference typed into the search box, not yet a passage in the library. */
-  | { filter: 'scripture'; key: string; ref: PassageRef; text: string; title: string; detail: string; snippet: string }
+  | { filter: 'scripture'; key: string; ref: PassageRef; text: string; title: string; detail: string; snippet: string; translations?: string[] }
   | { filter: 'backgrounds'; key: string; id: Id; title: string; render: BackgroundRender }
   | { filter: 'parts'; key: string; part: HeadingKind; title: string; detail: string }
   | { filter: 'lowerThirds'; key: string; id: Id; title: string; detail: string }
@@ -65,12 +65,12 @@ export function resultBadge(result: LibraryResult): string {
 
 const partKinds = itemKinds.filter((k): k is (typeof itemKinds)[number] & { key: HeadingKind } => k.key !== 'song' && k.key !== 'scripture')
 
-export function useLibraryResults(snapshot: OperatorSnapshot, text: string, filter: LibraryFilter, includeLive: boolean): LibraryResult[] {
+export function useLibraryResults(snapshot: OperatorSnapshot, text: string, filter: LibraryFilter, includeLive: boolean): { results: LibraryResult[]; isFresh: boolean } {
   const query = text.trim()
   const revision = snapshot.libraryRevision
   const ask = (kind: 'songs' | 'passages') => (query ? ({ type: 'library.search', text: query, kind, limit: 40 } as const) : ({ type: 'library.list', kind } as const))
-  const songs = useLibraryQuery(ask('songs'), revision)
-  const passages = useLibraryQuery(ask('passages'), revision)
+  const { hits: songs, isFresh: hasSongs } = useLibrarySearch(ask('songs'), revision)
+  const { hits: passages, isFresh: hasPassages } = useLibrarySearch(ask('passages'), revision)
   const parsed = query ? parseReference(query) : null
   const needle = query.toLowerCase()
   const matches = (name: string) => !needle || name.toLowerCase().includes(needle)
@@ -94,7 +94,7 @@ export function useLibraryResults(snapshot: OperatorSnapshot, text: string, filt
         ]
       : []),
   ]
-  return filter === 'all' ? results : results.filter((r) => r.filter === filter)
+  return { results: filter === 'all' ? results : results.filter((r) => r.filter === filter), isFresh: hasSongs && hasPassages }
 }
 
 export function targetItem(target: AddTarget): ServiceItem | undefined {
@@ -138,7 +138,7 @@ export function applyResult(result: LibraryResult, target: AddTarget, atEnd = fa
       break
     case 'scripture': {
       const passageId = 'ref' in result ? newId(result.title) : result.id
-      if ('ref' in result) dispatch({ type: 'passage.create', passageId, ref: result.ref, translations: service.translations ?? [] })
+      if ('ref' in result) dispatch({ type: 'passage.create', passageId, ref: result.ref, translations: result.translations ?? service.translations ?? [] })
       edit(slot ? { type: 'service.fillSlot', itemId, passageId } : { type: 'service.addPassage', itemId, passageId, afterItemId })
       break
     }

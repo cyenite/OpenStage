@@ -1,5 +1,6 @@
 import type { BibleInfo } from '@openstage/shared'
 import { parseBible, parseUsfm, type BibleFormat } from '../bibles/parse'
+import { abcHymn, isAbc } from './formats/abc'
 import { chordPro, isChordPro } from './formats/chordpro'
 import { easyWorship } from './formats/easyworship'
 import { freeShow } from './formats/freeshow'
@@ -23,6 +24,7 @@ const bibleFormats: { test: RegExp; format: BibleFormat; label: string }[] = [
 ]
 
 const easyWorshipCaution = 'Read from EasyWorship 6/7 databases as documented by other open-source importers; check the songs before using them.'
+const abcCaution = 'This hymn does not say its copyright is public domain; check that you may use it before using it.'
 const proPresenterCaution = 'Read from the ProPresenter 6 file format as documented by other open-source importers; check the song before using it.'
 
 /** Reads every file: unpacks ZIPs, pairs EasyWorship's two databases, gathers USFM books into one Bible. */
@@ -94,6 +96,10 @@ function readOne(file: SourceFile): Parsed[] {
     }
     if (/\.show$/i.test(file.name) || /^\s*\[\s*"[^"]+"\s*,\s*\{/.test(source.slice(0, 200))) return [{ kind: 'song', file: file.name, format: 'FreeShow', song: freeShow(title, source) }]
     if (/\.usr$/i.test(file.name) || /^\[File\]/m.test(source.slice(0, 200))) return [{ kind: 'song', file: file.name, format: 'SongSelect', song: songSelectUsr(source) }]
+    if (/\.abc$/i.test(file.name) || isAbc(source)) {
+      const { song, isPublicDomain } = abcHymn(title, source.includes('\ufffd') ? new TextDecoder('latin1').decode(file.bytes) : source)
+      return [{ kind: 'song', file: file.name, format: 'ABC', song, ...(!isPublicDomain && { caution: abcCaution }) }]
+    }
     if (isSongSelectText(source)) return [{ kind: 'song', file: file.name, format: 'SongSelect', song: songSelectText(source) }]
     if (isChordPro(file.name, source)) return [{ kind: 'song', file: file.name, format: 'ChordPro', song: chordPro(title, source) }]
     if (/\.txt$/i.test(file.name) || !/[\u0000-\u0008]/.test(source.slice(0, 1000))) {

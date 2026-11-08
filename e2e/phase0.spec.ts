@@ -11,7 +11,9 @@ test('the operator window drives both outputs through the engine', async () => {
     const session = await launch(userData)
     app = session.app
     const { operator, projector, stage } = session
-    expect(readdirSync(join(userData, 'library', 'songs')).sort()).toEqual(['amazing-grace.json', 'it-is-well.json'])
+    const own = readdirSync(join(userData, 'library', 'songs')).filter((name) => !name.startsWith('open-hymnal-'))
+    expect(own.sort()).toEqual(['amazing-grace.json', 'it-is-well.json'])
+    expect(readdirSync(join(userData, 'library', 'songs')).length).toBeGreaterThan(200)
 
     await expect(projector.locator('.os-background')).toHaveCount(1)
     await expect(projector.locator('.os-slide')).toHaveCount(0)

@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import type { BibleInfo, BibleText } from '@openstage/shared'
@@ -36,4 +36,9 @@ export async function saveBible(folder: string, bible: BibleText): Promise<void>
   const path = join(folder, `${bible.code.toLowerCase()}.json.gz`)
   await writeFile(`${path}.tmp`, gzipSync(JSON.stringify(bible), { level: 9 }))
   await rename(`${path}.tmp`, path)
+}
+
+/** Deletes a downloaded or imported Bible's file; a missing file is fine. */
+export async function removeBible(folder: string, code: string): Promise<void> {
+  await rm(join(folder, `${code.toLowerCase()}.json.gz`), { force: true })
 }

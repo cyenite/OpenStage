@@ -45,7 +45,7 @@ test('a pasted song can be created, added to the service, shown and edited live'
     await expect(operator.locator('.song-row')).toHaveCount(1)
     await expect(operator.locator('.song-row mark')).toHaveText('Nitamsifu')
 
-    expect(readdirSync(join(userData, 'library', 'songs')).filter((name) => name.endsWith('.json'))).toHaveLength(3)
+    expect(readdirSync(join(userData, 'library', 'songs')).filter((name) => name.endsWith('.json') && !name.startsWith('open-hymnal-'))).toHaveLength(3)
     await app.close()
     app = undefined
 

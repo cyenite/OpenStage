@@ -17,8 +17,9 @@ test('the Library adds after the selected item and sets backgrounds without leav
     await expect(order).toHaveCount(4)
     await expect(order.nth(1)).toHaveText('It Is Well with My Soul')
 
-    await operator.getByRole('tab', { name: 'Parts' }).click()
-    await operator.getByRole('button', { name: 'Add Sermon after It Is Well with My Soul' }).click()
+    await operator.keyboard.press('Control+k')
+    await quickAdd.getByRole('textbox', { name: 'Search everything to add' }).fill('sermon')
+    await operator.keyboard.press('Enter')
     await expect(order.nth(2)).toHaveText('Sermon')
 
     await operator.keyboard.press('Control+k')

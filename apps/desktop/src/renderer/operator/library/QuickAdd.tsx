@@ -22,13 +22,21 @@ export function QuickAdd({ snapshot, target, onClose }: QuickAddProps) {
   const [active, setActive] = useState(0)
   const [isCreating, setCreating] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
-  const results = useLibraryResults(snapshot, text, filter, false).slice(0, 60)
+  const { results: found, isFresh } = useLibraryResults(snapshot, text, filter, false)
+  const results = found.slice(0, 60)
+  // Enter pressed before the search answered waits for it, so a fast typist never adds the previous list's first song.
+  const [pendingEnter, setPendingEnter] = useState<{ atEnd: boolean } | null>(null)
   const index = Math.min(active, results.length - 1)
 
   useEffect(() => {
     dialog.current?.showModal()
   }, [])
   useEffect(() => setActive(0), [text, filter])
+  useEffect(() => {
+    if (!pendingEnter || !isFresh) return
+    setPendingEnter(null)
+    choose(results[0], pendingEnter.atEnd)
+  }, [pendingEnter, isFresh])
 
   const choose = (result: LibraryResult | undefined, atEnd = false) => {
     if (!result) return
@@ -54,7 +62,8 @@ export function QuickAdd({ snapshot, target, onClose }: QuickAddProps) {
               setActive((n) => Math.max(0, Math.min(results.length - 1, n + (e.key === 'ArrowDown' ? 1 : -1))))
             } else if (e.key === 'Enter') {
               e.preventDefault()
-              choose(results[index], e.shiftKey)
+              if (isFresh) choose(results[index], e.shiftKey)
+              else setPendingEnter({ atEnd: e.shiftKey })
             } else if (e.key === 'Tab') {
               e.preventDefault()
               const at = filters.findIndex((f) => f.key === filter)

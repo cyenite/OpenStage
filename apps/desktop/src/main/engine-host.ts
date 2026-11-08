@@ -16,7 +16,7 @@ export class EngineHost {
 
   start(): void {
     this.isReady = false
-    const child = utilityProcess.fork(join(__dirname, 'engine.js'), [`--data-dir=${app.getPath('userData')}`, `--bibles-dir=${join(app.getAppPath(), 'resources', 'bibles')}`], {
+    const child = utilityProcess.fork(join(__dirname, 'engine.js'), [`--data-dir=${app.getPath('userData')}`, `--bibles-dir=${join(app.getAppPath(), 'resources', 'bibles')}`, `--songs-dir=${join(app.getAppPath(), 'resources', 'songs')}`], {
       serviceName: 'OpenStage Engine',
       stdio: 'inherit',
     })

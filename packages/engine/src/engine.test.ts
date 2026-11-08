@@ -1,8 +1,12 @@
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ClientMessage, EngineMessage, EngineState, RenderState } from '@openstage/shared'
 import { Engine, type ClientPort } from './engine'
 import { buildDecks } from './decks'
 import { initialState, reduce } from './state'
+import { BibleComClient } from './bibles/biblecom'
 import { testBibles } from './bibles/fixture'
 import { starterLibrary } from './starter-library'
 import { LibraryIndex } from './store/library-index'
@@ -582,3 +586,190 @@ describe('Engine volunteer mode and rehearsal', () => {
 })
 
 
+describe('Engine instant presenting', () => {
+  const setup = () => {
+    const states: EngineState[] = []
+    const live: string[] = []
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary, onStateChange: (s) => states.push(s), onItemLive: (item) => live.push(item.id) })
+    const projector = fakePort()
+    engine.connect(projector.port, { role: 'output', outputId: 'projector' })
+    const ask = (query: object) => (engine as unknown as { query(q: object): { type: string; chapter?: unknown; slides?: unknown[] } }).query(query)
+    return { engine, projector, states, live, ask }
+  }
+  const grace = { type: 'song', songId: 'amazing-grace' } as const
+
+  it('previews and takes a library song live without touching the service or its timing', () => {
+    const { engine, projector, live } = setup()
+    const items = engine.service.items
+    engine.dispatch({ type: 'instant.show', source: grace, index: 1, isLive: false })
+    const id = engine.current.preview!.itemId
+    expect(id).toMatch(/^instant-song-/)
+    expect(engine.current.selectedItemId).toBe('item-amazing-grace')
+    expect(engine.snapshot().instant.map((d) => d.title)).toEqual(['Amazing Grace'])
+    engine.dispatch({ type: 'instant.show', source: grace, index: 0, isLive: true })
+    expect(engine.current.live.slide).toEqual({ itemId: id, index: 0 })
+    expect(projector.renders().at(-1)!.slide!.boxes[0]!.lines[0]).toBe('Amazing grace, how sweet the sound')
+    expect(engine.service.items).toBe(items)
+    expect(live).toEqual([])
+    expect(engine.current.timing.itemId).toBeNull()
+  })
+
+  it('steps within a library deck and never runs on into the service', () => {
+    const { engine } = setup()
+    const count = engine.snapshot().decks[0]!.slides.length
+    engine.dispatch({ type: 'instant.show', source: grace, index: count - 1, isLive: true })
+    const at = engine.current.live.slide
+    engine.dispatch({ type: 'live.next' })
+    expect(engine.current.live.slide).toEqual(at)
+    engine.dispatch({ type: 'live.previous' })
+    expect(engine.current.live.slide).toEqual({ ...at!, index: count - 2 })
+  })
+
+  it('drops a library source once nothing shows it, and keeps it in the saved state while it does', () => {
+    const { engine, states } = setup()
+    engine.dispatch({ type: 'instant.show', source: grace, index: 0, isLive: true })
+    expect(Object.keys(states.at(-1)!.instant)).toHaveLength(1)
+    engine.dispatch({ type: 'item.select', itemId: 'item-john-3' })
+    engine.dispatch({ type: 'live.take' })
+    expect(engine.current.instant).toEqual({})
+    expect(engine.snapshot().instant).toEqual([])
+  })
+
+  it('lists a chapter with the slide each verse starts on, and presents it from there', () => {
+    const { engine, ask, projector } = setup()
+    const result = ask({ type: 'bible.chapter', book: 'JHN', chapter: 3, translations: ['KJV', 'WEB'] }) as { chapter: { source: object; verses: { verse: number; main: string; secondary: string; slideIndex: number }[] } }
+    const verse16 = result.chapter.verses.find((v) => v.verse === 16)!
+    expect(verse16.main).toContain('For God so loved the world')
+    expect(verse16.secondary).not.toBe('')
+    engine.dispatch({ type: 'instant.show', source: result.chapter.source as never, index: verse16.slideIndex, isLive: true })
+    expect(projector.renders().at(-1)!.slide!.boxes[0]!.lines[0]).toContain('For God so loved the world')
+    expect(ask({ type: 'bible.chapter', book: 'XYZ', chapter: 1, translations: ['KJV'] }).chapter).toBeNull()
+  })
+
+  it('refuses malformed sources and slide indexes', () => {
+    const { engine } = setup()
+    const before = engine.current
+    engine.dispatch({ type: 'instant.show', source: { type: 'song', songId: '../x' }, index: 0, isLive: true })
+    engine.dispatch({ type: 'instant.show', source: grace, index: 99, isLive: true })
+    engine.dispatch({ type: 'instant.show', source: { type: 'scripture', ref: { book: 'JHN', startChapter: 99, endChapter: 99, startVerse: 1, endVerse: 1 }, translations: ['KJV'], versesPerSlide: 1 }, index: 0, isLive: false })
+    expect(engine.current).toBe(before)
+  })
+
+  it('returns a library song’s slides for the Songs tab', () => {
+    const { ask } = setup()
+    expect((ask({ type: 'song.slides', songId: 'amazing-grace' }).slides as unknown[]).length).toBeGreaterThan(2)
+    expect(ask({ type: 'song.slides', songId: 'gone' }).slides).toEqual([])
+  })
+})
+
+describe('Engine Bible downloads', () => {
+  const version = { id: 7, title: 'Test Version', abbreviation: 'kjv', languageTag: 'eng', languageName: 'English', language: 'en' }
+  const details = { books: [{ usfm: 'JUD', human: 'Jude', chapters: [{ usfm: 'JUD.1', canonical: true }] }], copyright_short: { text: 'Test copyright' } }
+  const chapter = '<span class="verse v1" data-usfm="JUD.1.1"><span class="label">1</span><span class="content">Jude, a servant.</span></span>'
+  const setup = async (status = 200) => {
+    const encode = (text: string) => new TextEncoder().encode(text)
+    const fetcher = async (url: string) => {
+      if (status !== 200) return { status, body: encode('') }
+      if (url.includes('/api/bible/versions')) return { status, body: encode(JSON.stringify({ response: { data: { versions: [{ ...version, text: true, language: { language_tag: 'eng', iso_639_1: 'en' } }] } } })) }
+      if (url.includes('/api/bible/version/')) return { status, body: encode(JSON.stringify(details)) }
+      return { status, body: encode(chapter) }
+    }
+    const removed: string[] = []
+    const installed: string[] = []
+    const stagingDir = await mkdtemp(join(tmpdir(), 'openstage-dl-'))
+    const engine = new Engine({
+      bibles: testBibles,
+      library: starterLibrary,
+      bundledBibles: ['WEB'],
+      bibleCom: { client: new BibleComClient(fetcher), stagingDir, retryDelayMs: 1 },
+      onBibleImported: (b) => installed.push(b.code),
+      onBibleRemoved: (code) => removed.push(code),
+    })
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 50))
+    return { engine, removed, installed, settle }
+  }
+
+  it('lists the catalogue, downloads a version under a free code and installs it', async () => {
+    const { engine, installed, settle } = await setup()
+    const catalog = (await (engine as unknown as { query(q: object): Promise<{ versions: unknown[] }> }).query({ type: 'bible.catalog', languageTag: 'eng' })).versions
+    expect(catalog).toHaveLength(1)
+    engine.dispatch({ type: 'bible.download', version })
+    expect(engine.snapshot().downloads.map((d) => d.version.id)).toEqual([7])
+    await settle()
+    expect(engine.snapshot().downloads).toEqual([])
+    expect(installed).toEqual(['KJV-7'])
+    expect(engine.snapshot().downloadedVersionIds).toEqual([7])
+    expect(engine.snapshot().bibles.find((b) => b.code === 'KJV-7')).toMatchObject({ name: 'Test Version', notice: 'Test copyright' })
+  })
+
+  it('keeps a refused download with its reason, and refuses bad versions', async () => {
+    const { engine, settle } = await setup(429)
+    engine.dispatch({ type: 'bible.download', version: { ...version, id: -1 } })
+    expect(engine.snapshot().downloads).toEqual([])
+    engine.dispatch({ type: 'bible.download', version })
+    await settle()
+    expect(engine.snapshot().downloads[0]).toMatchObject({ isRefused: true, error: expect.stringContaining('not accepting') })
+    engine.dispatch({ type: 'bible.cancelDownload', versionId: 7 })
+    expect(engine.snapshot().downloads).toEqual([])
+  })
+
+  it('removes added Bibles but never bundled ones', async () => {
+    const { engine, removed } = await setup()
+    engine.dispatch({ type: 'bible.remove', code: 'WEB' })
+    engine.dispatch({ type: 'bible.remove', code: 'KJV' })
+    expect(removed).toEqual(['KJV'])
+    expect(engine.snapshot().bibles.map((b) => b.code)).toEqual(['WEB'])
+  })
+})
+
+describe('Engine song catalogues', () => {
+  const imported = {
+    title: 'Free Song',
+    authors: ['A. Writer'],
+    copyright: '',
+    languages: ['en'],
+    sections: [{ label: 'Verse 1', slides: [[{ text: 'A free song line', chords: [] }]] }],
+    order: [],
+  }
+  const songs = [
+    { id: 1, title: 'Free Song', authors: ['A. Writer'], firstLine: 'A free song line', isRestricted: false, language: 'en' },
+    { id: 2, title: 'Amazing Grace', authors: [], firstLine: 'Amazing grace, how sweet the sound', isRestricted: true, language: 'en' },
+  ]
+  const setup = (fail = false) => {
+    let packs = 0
+    const client = {
+      languages: async () => [{ code: 'en', name: 'English', count: 2 }],
+      pack: async () => {
+        packs++
+        if (fail) throw Object.assign(new Error('No connection to the Worship Leader song server.'), { name: 'SongSourceError' })
+        return { songs, imported: new Map([[1, imported], [2, { ...imported, title: 'Amazing Grace', sections: [{ label: 'Verse 1', slides: [[{ text: 'Amazing grace, how sweet the sound', chords: [] }]] }] }]]) }
+      },
+    }
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary, songSources: { worshipLeader: client } })
+    const ask = (q: object) => (engine as unknown as { query(q: object): Promise<Record<string, unknown>> }).query(q)
+    return { engine, ask, packs: () => packs }
+  }
+
+  it('lists languages and songs, fetching a language once, and previews chosen songs as an import', async () => {
+    const { ask, packs } = setup()
+    expect(await ask({ type: 'songs.languages', source: 'worshipLeader' })).toMatchObject({ languages: [{ code: 'en' }], error: null })
+    expect((await ask({ type: 'songs.catalog', source: 'worshipLeader', language: 'en' })).songs).toHaveLength(2)
+    const plan = (await ask({ type: 'songs.preview', source: 'worshipLeader', language: 'en', songIds: [1, 2, 99] })).plan as { importId: string; items: { title: string; status: string; reason: string }[] }
+    expect(packs()).toBe(1)
+    expect(plan.items.map((i) => [i.title, i.status])).toEqual([
+      ['Free Song', 'new'],
+      ['Amazing Grace', 'duplicate'],
+      ['Worship Leader song 99', 'unreadable'],
+    ])
+    const report = (await ask({ type: 'import.apply', importId: plan.importId, decisions: { i0: 'add' }, bibles: {} })).report as { added: string[] }
+    expect(report.added).toEqual(['Free Song'])
+  })
+
+  it('reports a failed fetch and tries again next time', async () => {
+    const { ask, packs } = setup(true)
+    expect(await ask({ type: 'songs.catalog', source: 'worshipLeader', language: 'en' })).toMatchObject({ songs: [], error: 'No connection to the Worship Leader song server.' })
+    await ask({ type: 'songs.catalog', source: 'worshipLeader', language: 'en' })
+    expect(packs()).toBe(2)
+    expect(await ask({ type: 'songs.catalog', source: 'nowhere', language: 'en' })).toMatchObject({ error: 'The song catalogue is not available.' })
+  })
+})

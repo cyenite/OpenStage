@@ -4,12 +4,12 @@ import { launch, mainText, orderItem, tempUserData } from './app'
 test('a typed reference and passage sets use the bundled Bibles', async () => {
   const { app, operator, projector } = await launch(tempUserData())
   try {
-    const search = operator.getByRole('searchbox', { name: 'Search the library' })
+    await operator.keyboard.press('Control+k')
+    const search = operator.getByRole('textbox', { name: 'Search everything to add' })
     await search.fill('ps 23 1')
-    await expect(operator.locator('.library-card').first()).toContainText('Psalms 23:1')
+    await expect(operator.locator('.quick-add-row').first()).toContainText('Psalms 23:1')
     await search.press('Enter')
     await expect(orderItem(operator, /^BK Psalms 23:1/)).toBeVisible()
-    await expect(search).toHaveValue('')
     await operator.getByRole('button', { name: /Send to live/ }).click()
     await expect(mainText(projector)).toHaveText(/The LORD is my shepherd/)
 

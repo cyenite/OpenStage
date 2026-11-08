@@ -7,11 +7,13 @@ interface MonitorPaneProps {
   kind: 'preview' | 'live'
   caption: string
   render: RenderState
+  /** Where the slide came from: the service's schedule, or straight from the library. */
+  source?: 'Schedule' | 'Library'
   /** Accepts a background dragged from the Library. */
   onDropBackground?: (backgroundId: Id) => void
 }
 
-export function MonitorPane({ kind, caption, render, onDropBackground }: MonitorPaneProps) {
+export function MonitorPane({ kind, caption, source, render, onDropBackground }: MonitorPaneProps) {
   const [isDropTarget, setDropTarget] = useState(false)
   const accepts = (event: React.DragEvent) => !!onDropBackground && event.dataTransfer.types.includes(backgroundDragType)
   return (
@@ -35,6 +37,7 @@ export function MonitorPane({ kind, caption, render, onDropBackground }: Monitor
           <span className="dot" aria-hidden="true" />
           {kind.toUpperCase()}
         </span>
+        {source && <span className={`monitor-source is-${source.toLowerCase()}`}>{source}</span>}
         <span className="monitor-caption">{isDropTarget ? 'Drop to show it now, without saving it' : caption}</span>
       </div>
       <RenderView className="monitor-screen" render={render} />

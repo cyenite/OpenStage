@@ -1,4 +1,5 @@
-import { initialStage, stageLayouts, type Command, type Deck, type EngineState, type Id, type Library, type LiveLayers, type SlideRef, type StageState, type Timing } from '@openstage/shared'
+import { initialStage, instantId, isInstantId, stageLayouts, type Command, type Deck, type EngineState, type Id, type Library, type LiveLayers, type SlideRef, type StageState, type Timing } from '@openstage/shared'
+import { cleanInstant, pruneInstant } from './instant'
 
 export const emptyLive: LiveLayers = { slide: null, audio: null, background: null, lowerThird: null }
 
@@ -7,6 +8,7 @@ export const noTiming: Timing = { itemId: null, itemStartedAt: null, serviceStar
 export function initialState(decks: Deck[], defaultBackgroundId: Id | null, serviceId: Id | null): EngineState {
   const first = decks.find((d) => d.slides.length > 0)
   return {
+    instant: {},
     stage: initialStage,
     serviceId,
     timing: noTiming,
@@ -26,7 +28,12 @@ export function reduce(state: EngineState, command: Command, decks: Deck[]): Eng
     }
     case 'preview.set':
       if (!isValid(decks, command.ref)) return state
-      return { ...state, preview: command.ref, selectedItemId: command.ref.itemId }
+      return { ...state, preview: command.ref, selectedItemId: selectable(state, command.ref.itemId) }
+    case 'instant.show': {
+      const ref = { itemId: instantId(command.source), index: command.index }
+      if (!isValid(decks, ref)) return state
+      return command.isLive ? goLive(state, ref, decks) : { ...state, preview: ref }
+    }
     case 'live.take':
       return state.preview ? goLive(state, state.preview, decks) : state
     case 'live.next': {
@@ -56,8 +63,11 @@ export function reduce(state: EngineState, command: Command, decks: Deck[]): Eng
 
 function goLive(state: EngineState, ref: SlideRef, decks: Deck[]): EngineState {
   const preview = step(decks, ref, 1) ?? ref
-  return { ...state, preview, selectedItemId: preview.itemId, live: { ...state.live, slide: ref } }
+  return { ...state, preview, selectedItemId: selectable(state, preview.itemId), live: { ...state.live, slide: ref } }
 }
+
+/** Library slides never become the selected service item, so adds still land after what the operator picked. */
+const selectable = (state: EngineState, itemId: Id) => (isInstantId(itemId) ? state.selectedItemId : itemId)
 
 /** Moves within a deck, and forward into the next non-empty deck at the end of one. */
 function step(decks: Deck[], ref: SlideRef, delta: 1 | -1): SlideRef | null {
@@ -66,8 +76,9 @@ function step(decks: Deck[], ref: SlideRef, delta: 1 | -1): SlideRef | null {
   if (!deck) return null
   const index = ref.index + delta
   if (index >= 0 && index < deck.slides.length) return { itemId: deck.itemId, index }
-  if (delta < 0) return null
-  const following = decks.slice(deckIndex + 1).find((d) => d.slides.length > 0)
+  // A library deck ends where it ends; the service never runs on into it, or out of it.
+  if (delta < 0 || isInstantId(deck.itemId)) return null
+  const following = decks.slice(deckIndex + 1).find((d) => d.slides.length > 0 && !isInstantId(d.itemId))
   return following ? { itemId: following.itemId, index: 0 } : null
 }
 
@@ -77,19 +88,22 @@ export function sanitize(raw: Partial<EngineState>, decks: Deck[], library: Libr
   const pick = (records: Record<Id, unknown>, id: Id | null) => (id && Object.hasOwn(records, id) ? id : null)
   const timing = { ...noTiming, ...raw.timing }
   const isTimed = decks.some((d) => d.itemId === timing.itemId) && typeof timing.itemStartedAt === 'number'
-  return {
+  const preview = isValid(decks, raw.preview ?? null) ? raw.preview! : null
+  const slide = isValid(decks, live.slide) ? live.slide : null
+  return pruneInstant({
+    instant: cleanInstant(raw.instant),
     stage: sanitizeStage(raw.stage),
     serviceId: pick(library.services, raw.serviceId ?? null),
     timing: isTimed ? timing : { ...noTiming, serviceStartedAt: typeof timing.serviceStartedAt === 'number' ? timing.serviceStartedAt : null },
-    preview: isValid(decks, raw.preview ?? null) ? raw.preview! : null,
-    selectedItemId: decks.some((d) => d.itemId === raw.selectedItemId) ? raw.selectedItemId! : null,
+    preview,
+    selectedItemId: decks.some((d) => d.itemId === raw.selectedItemId && !isInstantId(d.itemId)) ? raw.selectedItemId! : null,
     live: {
-      slide: isValid(decks, live.slide) ? live.slide : null,
+      slide,
       audio: pick(library.audioCues, live.audio),
       background: pick(library.backgrounds, live.background),
       lowerThird: pick(library.lowerThirds, live.lowerThird),
     },
-  }
+  })
 }
 
 function sanitizeStage(raw: Partial<StageState> | undefined): StageState {

@@ -3011,25 +3011,7 @@ input[type='checkbox'] {
   background: var(--accent);
 }
 
-/* Library dock (Present), quick add, item inspector and editor sheet. */
-
-.library-dock {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-height: 220px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-}
-
-.library-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
+/* Library panel (Present), quick add, item inspector and editor sheet. */
 
 .library-search {
   display: flex;
@@ -3393,15 +3375,600 @@ input[type='checkbox'] {
   background: var(--window);
 }
 
-/* The dock stays in reach under a long slide grid instead of scrolling away with it. */
-.workspace-present .library-dock {
+/* The Library stays in reach under a long slide grid instead of scrolling away with it. */
+.library-panel {
   position: sticky;
   bottom: -18px;
   z-index: 2;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  height: min(42vh, 440px);
+  min-height: 300px;
   margin-bottom: -6px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
   box-shadow: 0 -12px 24px -12px rgba(0, 0, 0, 0.35);
 }
 
-.workspace-present .library-results {
-  max-height: 168px;
+.library-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 6px 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.library-tabs button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.library-tabs button[aria-selected='true'] {
+  box-shadow: inset 0 -2px 0 var(--accent);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.library-tab-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.library-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+  padding: 10px 12px;
+  overflow: auto;
+}
+
+.songs-tab,
+.bible-tab {
+  flex-direction: row;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.library-empty-tab {
+  align-items: center;
+  justify-content: center;
+}
+
+.library-browser {
+  display: flex;
+  flex: 0 0 300px;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding: 10px;
+  border-right: 1px solid var(--line);
+}
+
+.library-detail {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.library-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+
+.library-detail-head strong {
+  font-size: 15px;
+}
+
+.library-detail-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.browser-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.browser-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+}
+
+.browser-row.is-compact {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.browser-row:hover {
+  background: var(--hover);
+}
+
+.browser-row.is-selected {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--text);
+}
+
+.browser-row-title {
+  font-weight: 500;
+}
+
+.browser-row-detail {
+  overflow: hidden;
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+
+.browser-row-detail mark {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: inherit;
+}
+
+.library-slides {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  align-content: start;
+  gap: 10px;
+  padding: 10px 12px;
+  overflow-y: auto;
+}
+
+.library-slide {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.library-slide-text {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  padding: 8px;
+  overflow: hidden;
+  border-radius: 6px;
+  outline: 1px solid var(--line-strong);
+  background: #101a2a;
+  font-family: var(--serif);
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: pre-line;
+  text-align: center;
+  color: #fff;
+}
+
+.library-slide.is-preview .library-slide-text {
+  outline: 2px solid var(--preview);
+}
+
+.library-slide.is-live .library-slide-text {
+  outline: 2px solid var(--live);
+}
+
+.library-slide-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.tag-live,
+.verse-item.is-live .verse-tag {
+  color: var(--live-text);
+}
+
+.tag-preview,
+.verse-item.is-preview .verse-tag {
+  color: var(--preview-text);
+}
+
+.library-search.is-invalid {
+  border-color: var(--live);
+}
+
+.bible-versions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.bible-versions label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.bible-versions select,
+.catalog-controls select,
+.catalog-controls input {
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--field);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.link-button {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.bible-pickers {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 8px;
+  min-height: 0;
+}
+
+.chapter-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-content: start;
+  gap: 3px;
+  overflow-y: auto;
+}
+
+.chapter-grid button {
+  min-height: 26px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--segment);
+  font-size: 11px;
+  color: var(--text-soft);
+}
+
+.chapter-grid button.is-selected {
+  background: var(--accent);
+  font-weight: 700;
+  color: var(--on-accent);
+}
+
+.verse-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  margin: 0;
+  padding: 6px 8px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.verse-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 54px;
+  gap: 12px;
+  align-items: start;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+}
+
+.verse-item.has-second {
+  grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr) 54px;
+}
+
+.verse-item:hover {
+  background: var(--hover);
+}
+
+.verse-item.is-preview {
+  background: var(--preview-wash);
+  box-shadow: inset 3px 0 0 var(--preview);
+}
+
+.verse-item.is-live {
+  background: var(--live-wash);
+  box-shadow: inset 3px 0 0 var(--live);
+}
+
+.verse-item[aria-pressed='true']:not(.is-preview, .is-live) {
+  background: var(--segment);
+}
+
+.verse-number {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.verse-text {
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.verse-second {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.verse-tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.monitor-source {
+  margin-right: auto;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.monitor-source.is-library {
+  background: color-mix(in srgb, #78a5ff 18%, transparent);
+  color: color-mix(in srgb, #78a5ff 70%, var(--text));
+}
+
+.monitor-source.is-schedule {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+.bible-versions[open] {
+  display: flex;
+  flex-direction: column;
+  width: min(1100px, 94vw);
+  height: min(780px, 88vh);
+  overflow: hidden;
+}
+
+.bible-versions-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.bible-versions-head .button-primary {
+  margin-left: auto;
+}
+
+.bible-versions-body {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: 0;
+}
+
+.bible-versions-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 20px;
+  overflow-y: auto;
+}
+
+.bible-versions-column + .bible-versions-column {
+  border-left: 1px solid var(--line);
+}
+
+.bible-versions-column section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.catalog {
+  flex: 1;
+  min-height: 0;
+}
+
+.catalog-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.version-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.catalog-list {
+  flex: 1;
+  min-height: 120px;
+  overflow-y: auto;
+}
+
+.version-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--raised);
+}
+
+.version-code {
+  flex: none;
+  min-width: 38px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--segment);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.version-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.version-text .muted {
+  overflow: hidden;
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.version-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.version-state {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--preview-text);
+}
+
+.version-download {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.version-download progress {
+  width: 100%;
+  height: 6px;
+  accent-color: var(--accent);
+}
+
+.version-error {
+  font-size: 12px;
+  color: var(--live-text);
+}
+
+.rights-note {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+  font-size: 12px;
+}
+
+.rights-note label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.library-browser .library-search {
+  flex: none;
+}
+
+.rights-note label {
+  flex-direction: row;
+  justify-content: flex-start;
+  text-align: left;
+  color: var(--text-soft);
+}
+
+.rights-note input {
+  width: auto;
+  margin: 0;
+}
+
+.get-songs[open] {
+  display: flex;
+  flex-direction: column;
+  width: min(820px, 94vw);
+  height: min(780px, 88vh);
+  overflow: hidden;
+}
+
+.get-songs-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding: 14px 20px 18px;
+}
+
+.get-songs-controls {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.get-songs-row.is-locked {
+  opacity: 0.6;
+}
+
+.get-songs-row input {
+  flex: none;
+}
+
+.song-restricted {
+  flex: none;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--live-wash);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--live-text);
+}
+
+.get-songs-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }

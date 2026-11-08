@@ -1,9 +1,12 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { ClientMessage, EngineConnect, EngineMessage, EngineState } from '@openstage/shared'
-import { loadBibles, saveBible } from './bibles/store'
+import type { ClientMessage, EngineConnect, EngineMessage, EngineState, Library } from '@openstage/shared'
+import { BibleComClient } from './bibles/biblecom'
+import { loadBibles, removeBible, saveBible } from './bibles/store'
 import { Engine, type ClientPort, type EngineSettings } from './engine'
 import { atomicWriteJson, CoalescingWriter, loadLiveState } from './persistence'
+import { loadSongPacks, songsToInstall } from './song-packs'
+import { WorshipLeaderClient } from './import/worship-leader'
 import { starterLibrary } from './starter-library'
 import { DocumentStore } from './store/document-store'
 import { LibraryIndex } from './store/library-index'
@@ -30,13 +33,17 @@ export async function startEngineProcess(): Promise<void> {
   const usage = new UsageLog(join(dataDir, 'usage.jsonl'), report('song usage'))
 
   await store.saveAll(datedStarter(new Date()), await store.missingKinds())
-  const { library, problems } = await store.loadAll()
+  const { library: loaded, problems } = await store.loadAll()
   for (const problem of problems) console.warn('[engine] library:', problem)
+  const library = await installSongPacks(loaded, store, argument('songs-dir'), join(dataDir, 'song-packs.json'))
   const index = new LibraryIndex()
   index.rebuild(library)
   for (const entry of await usage.read()) index.recordUsage(entry)
-  const bibleFolders = [argument('bibles-dir'), join(dataDir, 'bibles')].filter((f): f is string => !!f)
-  const bibles = await loadBibles(bibleFolders, (file, error) => console.warn('[engine] could not read Bible', file, error))
+  const bundledFolder = argument('bibles-dir')
+  const userBibles = join(dataDir, 'bibles')
+  const onBadBible = (file: string, error: unknown) => console.warn('[engine] could not read Bible', file, error)
+  const bundled = bundledFolder ? await loadBibles([bundledFolder], onBadBible) : []
+  const bibles = await loadBibles([...(bundledFolder ? [bundledFolder] : []), userBibles], onBadBible)
   const restored = await loadLiveState(statePath, library, bibles)
   const settingsPath = join(dataDir, 'settings.json')
   const settings = await loadSettings(settingsPath)
@@ -59,8 +66,15 @@ export async function startEngineProcess(): Promise<void> {
       index.upsert(kind, document)
     },
     onBibleImported: (bible) => {
-      saveBible(join(dataDir, 'bibles'), bible).catch(report('an imported Bible'))
+      saveBible(userBibles, bible).catch(report('an imported Bible'))
     },
+    onBibleRemoved: (code) => {
+      removeBible(userBibles, code).catch(report('a removed Bible'))
+    },
+    bundledBibles: bundled.map((b) => b.code),
+    // Tests set this so they never reach bible.com or a song catalogue.
+    bibleCom: process.env['OPENSTAGE_OFFLINE'] ? undefined : { client: new BibleComClient(), stagingDir: join(dataDir, 'bible-downloads') },
+    songSources: process.env['OPENSTAGE_OFFLINE'] ? {} : { worshipLeader: new WorshipLeaderClient() },
     onDocumentRemove: (kind, id) => {
       index.remove(kind, id)
       store.remove(kind, id).catch(report('a removed document'))
@@ -87,6 +101,24 @@ async function loadSettings(path: string): Promise<EngineSettings> {
   } catch {
     return { isLocked: false }
   }
+}
+
+/** Adds each bundled song pack's songs the first time this library sees that pack. */
+async function installSongPacks(library: Library, store: DocumentStore, folder: string | undefined, recordPath: string): Promise<Library> {
+  if (!folder) return library
+  const installed: string[] = await readFile(recordPath, 'utf8').then((text) => JSON.parse(text), () => [])
+  const packs = await loadSongPacks(folder, (file, error) => console.warn('[engine] could not read song pack', file, error))
+  const fresh = packs.filter((pack) => !installed.includes(pack.id))
+  if (fresh.length === 0) return library
+  let next = library
+  for (const pack of fresh) {
+    const songs = songsToInstall(pack, next)
+    for (const song of songs) store.save('songs', song)
+    next = { ...next, songs: { ...next.songs, ...Object.fromEntries(songs.map((s) => [s.id, s])) } }
+  }
+  await store.flush()
+  await atomicWriteJson(recordPath, [...installed, ...fresh.map((p) => p.id)])
+  return next
 }
 
 /** The starter service lands on the coming Sunday, so a new calendar has something on it. */

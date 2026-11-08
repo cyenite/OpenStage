@@ -10,7 +10,10 @@ import { TitleBar } from './components/TitleBar'
 import { EditWorkspace, type EditSelection } from './edit/EditWorkspace'
 import { editLibraries } from './edit/LibraryTabs'
 import { EditorSheet, type SheetDocument } from './library/EditorSheet'
-import { LibraryDock } from './library/LibraryDock'
+import { ImportDialog, type ImportSource } from './edit/ImportDialog'
+import { BibleVersions } from './library/BibleVersions'
+import { GetSongs } from './library/GetSongs'
+import { LibraryPanel } from './library/LibraryPanel'
 import { QuickAdd } from './library/QuickAdd'
 import type { AddTarget } from './library/results'
 import { initialPlanSelection, PlanWorkspace, type PlanSelection } from './plan/PlanWorkspace'
@@ -28,11 +31,14 @@ export function App() {
   const [isLocking, setLocking] = useState(false)
   const [addTarget, setAddTarget] = useState<AddTarget | null>(null)
   const [sheet, setSheet] = useState<SheetDocument | null>(null)
+  const [isManagingBibles, setManagingBibles] = useState(false)
+  const [isGettingSongs, setGettingSongs] = useState(false)
+  const [importSource, setImportSource] = useState<ImportSource | null>(null)
   const [planSelection, setPlanSelection] = useState<PlanSelection>(initialPlanSelection)
   const [editSelection, setEditSelection] = useState<EditSelection>({ library: 'songs', songId: null, themeId: null, passageId: null })
-  // Esc closes an overlay, and must never also clear the screens.
-  const isOverlayOpen = !!addTarget || !!sheet
   const isLocked = !!snapshot?.mode.isLocked
+  // Esc closes an overlay, and must never also clear the screens.
+  const isOverlayOpen = !!addTarget || !!sheet || isManagingBibles || isGettingSongs || !!importSource
   useShortcuts(isLocked || (workspace === 'present' && !isOverlayOpen) ? snapshot : null)
 
   /** Adds after the selected item of the open service, or into another service from Plan. */
@@ -93,14 +99,27 @@ export function App() {
             onWorkspace={setWorkspace}
             onAppearance={setAppearance}
           />
-          {workspace === 'present' && <PresentWorkspace snapshot={snapshot} onAdd={() => openQuickAdd()} onEdit={openEditor} onOpenSongs={() => setWorkspace('edit')} />}
-          {workspace === 'edit' && <EditWorkspace snapshot={snapshot} selection={editSelection} onSelection={setEditSelection} />}
+          {workspace === 'present' && (
+            <PresentWorkspace
+              snapshot={snapshot}
+              onAdd={() => openQuickAdd()}
+              onEdit={openEditor}
+              onEditSong={(id) => setSheet({ kind: 'song', id })}
+              onManageBibles={() => setManagingBibles(true)}
+              onGetSongs={() => setGettingSongs(true)}
+              onOpenSongs={() => setWorkspace('edit')}
+            />
+          )}
+          {workspace === 'edit' && <EditWorkspace snapshot={snapshot} selection={editSelection} onSelection={setEditSelection} onGetSongs={() => setGettingSongs(true)} />}
           {workspace === 'plan' && (
             <PlanWorkspace snapshot={snapshot} selection={planSelection} onSelection={setPlanSelection} onQuickAdd={openQuickAdd} onPresent={() => setWorkspace('present')} />
           )}
           {addTarget && <QuickAdd snapshot={snapshot} target={addTarget} onClose={() => setAddTarget(null)} />}
-          {isLocking && <VolunteerDialog hasPin={snapshot.mode.hasPin} onClose={() => setLocking(false)} />}
+          {isGettingSongs && <GetSongs onImport={setImportSource} onClose={() => setGettingSongs(false)} />}
+          {importSource && <ImportDialog source={importSource} installedBibles={snapshot.bibles.map((b) => b.code)} onClose={() => setImportSource(null)} />}
+          {isManagingBibles && <BibleVersions snapshot={snapshot} onClose={() => setManagingBibles(false)} />}
           {sheet && <EditorSheet key={`${sheet.kind}/${sheet.id}`} snapshot={snapshot} document={sheet} onClose={() => setSheet(null)} onOpenTheme={openTheme} />}
+          {isLocking && <VolunteerDialog hasPin={snapshot.mode.hasPin} onClose={() => setLocking(false)} />}
         </>
       ) : (
         <ConnectingScreen />
@@ -122,13 +141,17 @@ interface PresentWorkspaceProps {
   snapshot: OperatorSnapshot
   onAdd: () => void
   onEdit: (item: ServiceItem) => void
+  onEditSong: (songId: Id) => void
+  onManageBibles: () => void
+  onGetSongs: () => void
   onOpenSongs: () => void
 }
 
-function PresentWorkspace({ snapshot, onAdd, onEdit, onOpenSongs }: PresentWorkspaceProps) {
-  const { state, decks } = snapshot
+function PresentWorkspace({ snapshot, onAdd, onEdit, onEditSong, onManageBibles, onGetSongs, onOpenSongs }: PresentWorkspaceProps) {
+  const { state, decks, instant } = snapshot
+  const sourceOf = (ref: typeof state.preview) => (!ref ? undefined : instant.some((d) => d.itemId === ref.itemId) ? 'Library' : 'Schedule')
   const describe = (ref: typeof state.preview) => {
-    const deck = decks.find((d) => d.itemId === ref?.itemId)
+    const deck = [...decks, ...instant].find((d) => d.itemId === ref?.itemId)
     const slide = ref ? deck?.slides[ref.index] : undefined
     return slide && ref ? `${deck!.title} · ${slide.label} · slide ${ref.index + 1}` : 'Nothing'
   }
@@ -137,17 +160,18 @@ function PresentWorkspace({ snapshot, onAdd, onEdit, onOpenSongs }: PresentWorks
       <ServiceOrder snapshot={snapshot} onAdd={onAdd} onEdit={onEdit} onOpenSongs={onOpenSongs} />
       <main className="main">
         <section className="monitors" aria-label="Preview and live">
-          <MonitorPane kind="preview" caption={describe(state.preview)} render={snapshot.previewRender} />
+          <MonitorPane kind="preview" caption={describe(state.preview)} source={sourceOf(state.preview)} render={snapshot.previewRender} />
           <MonitorPane
             kind="live"
             caption={describe(state.live.slide)}
+            source={sourceOf(state.live.slide)}
             render={snapshot.liveRender}
             onDropBackground={(backgroundId) => dispatch({ type: 'background.set', backgroundId })}
           />
         </section>
         <ControlBar snapshot={snapshot} />
         <SlideGrid snapshot={snapshot} />
-        <LibraryDock snapshot={snapshot} />
+        <LibraryPanel snapshot={snapshot} onEditSong={onEditSong} onManageBibles={onManageBibles} onGetSongs={onGetSongs} />
       </main>
       <PresentInspector snapshot={snapshot} onEdit={onEdit} />
       <Timeline snapshot={snapshot} />
