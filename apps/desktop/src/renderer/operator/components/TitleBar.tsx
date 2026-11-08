@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import type { OperatorSnapshot, OutputStatus } from '@openstage/shared'
 import type { WindowState } from '../../../chrome'
 import { appearances, chrome, isMac, workspaces, type Appearance, type Workspace } from '../chrome'
+import { dispatch } from '../engine'
 
 interface TitleBarProps {
   title: string
@@ -10,16 +11,17 @@ interface TitleBarProps {
   workspace: Workspace
   appearance: Appearance
   windowState: WindowState
+  onLock: () => void
   onSearch: () => void
   onWorkspace: (workspace: Workspace) => void
   onAppearance: (appearance: Appearance) => void
 }
 
 /** The unified toolbar is the window's title bar: everything that is not a control drags the window. */
-export function TitleBar({ title, subtitle, snapshot, workspace, appearance, windowState, onSearch, onWorkspace, onAppearance }: TitleBarProps) {
+export function TitleBar({ title, subtitle, snapshot, workspace, appearance, windowState, onLock, onSearch, onWorkspace, onAppearance }: TitleBarProps) {
   return (
     <header className="titlebar">
-      {isMac ? <span className={`traffic-light-space${windowState.isFullScreen ? ' is-hidden' : ''}`} aria-hidden="true" /> : <WindowControls isMaximized={windowState.isMaximized} />}
+      <WindowChrome windowState={windowState} />
       <div className="titlebar-title">
         <span className="titlebar-name">{title}</span>
         <span className="titlebar-subtitle">{subtitle}</span>
@@ -35,6 +37,10 @@ export function TitleBar({ title, subtitle, snapshot, workspace, appearance, win
         <SearchIcon />
         <span className="command-label">Add to the service</span>
         <kbd>{isMac ? '⌘K' : 'Ctrl K'}</kbd>
+      </button>
+      <RehearseButton isRehearsing={snapshot.mode.isRehearsing} />
+      <button className="icon-button lock-button" aria-label="Volunteer mode" title="Volunteer mode: lock to the simple screen" onClick={onLock}>
+        <LockIcon />
       </button>
       <div className="output-pills" aria-label="Outputs">
         {snapshot.outputs.map((output) => (
@@ -66,6 +72,35 @@ function Segmented({ role = 'tablist', label, className, children }: SegmentedPr
     <div className={`segmented ${className}`} role={role} aria-label={label}>
       {children}
     </div>
+  )
+}
+
+export function WindowChrome({ windowState }: { windowState: WindowState }) {
+  return isMac ? <span className={`traffic-light-space${windowState.isFullScreen ? ' is-hidden' : ''}`} aria-hidden="true" /> : <WindowControls isMaximized={windowState.isMaximized} />
+}
+
+/** Off-air practice: the screens keep what they showed until rehearsal stops. */
+export function RehearseButton({ isRehearsing }: { isRehearsing: boolean }) {
+  return isRehearsing ? (
+    <span className="rehearsal-pill">
+      Rehearsal · the screens are not changing
+      <button className="button-small" onClick={() => dispatch({ type: 'rehearsal.stop' })}>
+        Stop
+      </button>
+    </span>
+  ) : (
+    <button className="button-quiet button-small" title="Practise the service without changing the screens" onClick={() => dispatch({ type: 'rehearsal.start' })}>
+      Rehearse
+    </button>
+  )
+}
+
+export function LockIcon() {
+  return (
+    <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 018 0v4" />
+    </svg>
   )
 }
 

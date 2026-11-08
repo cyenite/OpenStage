@@ -12,6 +12,7 @@ import {
   type TemplateEdit,
   type BibleInfo,
   type BibleText,
+  volunteerCommands,
   type ImportDecision,
   type ImportFile,
   type ImportReport,
@@ -39,6 +40,7 @@ import {
   type SongEdit,
   type ThemeEdit,
 } from '@openstage/shared'
+import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { bibleInfo } from './bibles/store'
 import { readFiles } from './import/detect'
 import { findDuplicate, isBibleCode, mergeInto, planItems, songFromImport } from './import/plan'
@@ -88,8 +90,17 @@ interface OutputChannel {
   ackedSeq: number
 }
 
+/** Kept in `settings.json`, so a locked window stays locked across a restart. */
+export interface EngineSettings {
+  pinHash?: string
+  pinSalt?: string
+  isLocked: boolean
+}
+
 export interface EngineOptions {
   now?: () => number
+  settings?: EngineSettings
+  onSettingsChange?: (settings: EngineSettings) => void
   index?: LibrarySearch
   bibles?: BibleText[]
   library: Library
@@ -103,6 +114,12 @@ export interface EngineOptions {
 }
 
 const noService: Service = { id: '', name: 'No service', items: [] }
+
+const isPin = (pin: unknown): pin is string => typeof pin === 'string' && /^\d{4,8}$/.test(pin)
+
+function hashPin(pin: string, salt = randomBytes(16).toString('hex')): { pinHash: string; pinSalt: string } {
+  return { pinHash: scryptSync(pin, salt, 32).toString('hex'), pinSalt: salt }
+}
 
 const localDay = (time: number) => {
   const date = new Date(time)
@@ -125,12 +142,18 @@ export class Engine {
   private readonly histories = new Map<string, History>()
   private readonly imports = new Map<Id, Parsed[]>()
   private bibleList: BibleText[]
+  private settings: EngineSettings
+  /** What the screens show while rehearsing; null when not rehearsing. */
+  private onAir: EngineState | null = null
+  private failedUnlocks = 0
+  private unlockBlockedUntil = 0
   private readonly channels = new Map<OutputId, OutputChannel>()
 
   constructor(options: EngineOptions) {
     this.options = options
     this.library = options.library
     this.bibleList = options.bibles ?? []
+    this.settings = options.settings ?? { isLocked: false }
     const services = Object.values(options.library.services).sort(byName)
     const serviceId = options.restored?.serviceId ?? lookup(options.library.services, options.serviceId)?.id ?? services[0]?.id ?? null
     this.decks = buildDecks(lookup(this.library.services, serviceId) ?? noService, this.library, this.bibles)
@@ -177,7 +200,17 @@ export class Engine {
   }
 
   dispatch(command: Command): void {
+    if (this.settings.isLocked && !volunteerCommands.has(command?.type)) return
     switch (command.type) {
+      case 'volunteer.lock':
+        return this.lock(command.pin)
+      case 'volunteer.setPin':
+        if (isPin(command.pin)) this.saveSettings({ ...this.settings, ...hashPin(command.pin) })
+        return
+      case 'rehearsal.start':
+        return this.setRehearsing(true)
+      case 'rehearsal.stop':
+        return this.setRehearsing(false)
       case 'song.create':
         return this.createSong(command)
       case 'song.delete':
@@ -234,7 +267,7 @@ export class Engine {
     const now = this.now()
     const timing = isNewItem ? { itemId: item.id, itemStartedAt: now, serviceStartedAt: this.state.timing.serviceStartedAt ?? now } : this.state.timing
     this.setState({ ...reduced, timing })
-    if (isNewItem) this.options.onItemLive?.(item, this.service)
+    if (isNewItem && !this.onAir) this.options.onItemLive?.(item, this.service)
     this.publish()
   }
 
@@ -254,6 +287,7 @@ export class Engine {
       bibles: this.bibles.map(bibleInfo),
       services: this.serviceSummaries(),
       libraryRevision: this.libraryRevision,
+      mode: { isLocked: this.settings.isLocked, hasPin: !!this.settings.pinHash, isRehearsing: this.onAir !== null },
       themeUses: this.themeUses(),
       outputs: outputs.map((o) => {
         const channel = this.channels.get(o.id)
@@ -265,7 +299,7 @@ export class Engine {
           isConnected: [...this.clients].some((c) => c.hello.outputId === o.id),
         }
       }),
-      liveRender: this.channels.get(projector.id)!.render,
+      liveRender: this.onAir ? { seq: 0, ...resolveRender(this.state, this.context, projector) } : this.channels.get(projector.id)!.render,
       previewRender: { seq: 0, ...resolveRender(this.state, this.context, projector, this.state.preview) },
     }
   }
@@ -294,6 +328,8 @@ export class Engine {
       const passage = lookup(this.library.passages, query.passageId)
       return { type: 'slides', slides: passage?.ref ? scriptureSlides(passage, this.bibles) : [] }
     }
+    if (query?.type === 'volunteer.unlock') return this.unlock(query.pin)
+    if (this.settings.isLocked && (query?.type === 'import.preview' || query?.type === 'import.apply')) return hits([])
     if (query?.type === 'import.preview') return { type: 'importPlan', plan: this.previewImport(query.files) }
     if (query?.type === 'import.apply') return { type: 'importReport', report: this.applyImport(query.importId, query.decisions, query.bibles) }
     if (query?.type === 'song.outlines') {
@@ -596,9 +632,54 @@ export class Engine {
     client.port.send({ type: 'document', ref, document, canUndo: history?.canUndo ?? false, canRedo: history?.canRedo ?? false })
   }
 
+  /** Rehearsal changes are not saved: a crash mid-rehearsal restores what was on air. */
   private setState(next: EngineState): void {
     this.state = next
-    this.options.onStateChange?.(next)
+    if (!this.onAir) this.options.onStateChange?.(next)
+  }
+
+  private saveSettings(settings: EngineSettings): void {
+    this.settings = settings
+    this.options.onSettingsChange?.(settings)
+    this.publish()
+  }
+
+  private lock(pin: string | undefined): void {
+    if (this.settings.isLocked) return
+    if (!this.settings.pinHash && !isPin(pin)) return
+    this.saveSettings({ ...this.settings, ...(this.settings.pinHash ? {} : hashPin(pin!)), isLocked: true })
+  }
+
+  /** Five wrong PINs in a row block further tries for 30 seconds, so a 4-digit PIN cannot be guessed by trying them all. */
+  private unlock(pin: unknown): QueryResult {
+    const now = this.now()
+    const wait = Math.ceil((this.unlockBlockedUntil - now) / 1000)
+    if (wait > 0) return { type: 'unlock', isUnlocked: false, waitSeconds: wait }
+    const { pinHash, pinSalt } = this.settings
+    const isRight = typeof pin === 'string' && !!pinHash && !!pinSalt && timingSafeEqual(Buffer.from(hashPin(pin, pinSalt).pinHash, 'hex'), Buffer.from(pinHash, 'hex'))
+    if (!isRight) {
+      this.failedUnlocks++
+      if (this.failedUnlocks >= 5) {
+        this.failedUnlocks = 0
+        this.unlockBlockedUntil = now + 30_000
+      }
+      return { type: 'unlock', isUnlocked: false, waitSeconds: this.unlockBlockedUntil > now ? 30 : 0 }
+    }
+    this.failedUnlocks = 0
+    this.saveSettings({ ...this.settings, isLocked: false })
+    return { type: 'unlock', isUnlocked: true, waitSeconds: 0 }
+  }
+
+  /** Rehearsing freezes the outputs on what was on air; stopping puts the operator back exactly there. */
+  private setRehearsing(isRehearsing: boolean): void {
+    if (isRehearsing === (this.onAir !== null)) return
+    if (isRehearsing) {
+      this.onAir = this.state
+    } else {
+      this.state = sanitize(this.onAir!, this.decks, this.library)
+      this.onAir = null
+    }
+    this.publish()
   }
 
   private publish(): void {
@@ -609,8 +690,9 @@ export class Engine {
   /** Returns the outputs whose frame actually changed; only those get a new seq. */
   private resolveOutputs(): OutputId[] {
     const changed: OutputId[] = []
+    const onScreen = this.onAir ? sanitize(this.onAir, this.decks, this.library) : this.state
     for (const profile of outputs) {
-      const resolved = resolveRender(this.state, this.context, profile)
+      const resolved = resolveRender(onScreen, this.context, profile)
       const json = JSON.stringify(resolved)
       const channel = this.channels.get(profile.id)
       if (channel?.json === json) continue

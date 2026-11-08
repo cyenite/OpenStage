@@ -16,6 +16,8 @@ import type { AddTarget } from './library/results'
 import { initialPlanSelection, PlanWorkspace, type PlanSelection } from './plan/PlanWorkspace'
 import { isMac, useAppearance, useWindowState, useWorkspace } from './chrome'
 import { useShortcuts } from './useShortcuts'
+import { VolunteerDialog } from './volunteer/PinDialogs'
+import { VolunteerScreen } from './volunteer/VolunteerScreen'
 import { dispatch, useSnapshot } from './engine'
 
 export function App() {
@@ -23,17 +25,19 @@ export function App() {
   const windowState = useWindowState()
   const [workspace, setWorkspace] = useWorkspace()
   const [appearance, setAppearance] = useAppearance()
+  const [isLocking, setLocking] = useState(false)
   const [addTarget, setAddTarget] = useState<AddTarget | null>(null)
   const [sheet, setSheet] = useState<SheetDocument | null>(null)
   const [planSelection, setPlanSelection] = useState<PlanSelection>(initialPlanSelection)
   const [editSelection, setEditSelection] = useState<EditSelection>({ library: 'songs', songId: null, themeId: null, passageId: null })
   // Esc closes an overlay, and must never also clear the screens.
   const isOverlayOpen = !!addTarget || !!sheet
-  useShortcuts(workspace === 'present' && !isOverlayOpen ? snapshot : null)
+  const isLocked = !!snapshot?.mode.isLocked
+  useShortcuts(isLocked || (workspace === 'present' && !isOverlayOpen) ? snapshot : null)
 
   /** Adds after the selected item of the open service, or into another service from Plan. */
   const openQuickAdd = (target?: AddTarget) => {
-    if (!snapshot) return
+    if (!snapshot || isLocked) return
     const { service, state, decks } = snapshot
     const afterItemId = state.selectedItemId
     setAddTarget(target ?? { service, afterItemId, afterTitle: decks.find((d) => d.itemId === afterItemId)?.title ?? '', isOpen: true })
@@ -58,10 +62,18 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey)
   })
 
-  const classes = ['app', `workspace-${workspace}`, isMac ? 'is-mac' : 'is-framed', windowState.isFocused ? '' : 'is-blurred']
+  const classes = [
+    'app',
+    isLocked ? 'workspace-volunteer' : `workspace-${workspace}`,
+    isMac ? 'is-mac' : 'is-framed',
+    windowState.isFocused ? '' : 'is-blurred',
+    snapshot?.mode.isRehearsing ? 'is-rehearsing' : '',
+  ]
   return (
     <div className={classes.filter(Boolean).join(' ')}>
-      {snapshot ? (
+      {snapshot && isLocked ? (
+        <VolunteerScreen snapshot={snapshot} windowState={windowState} />
+      ) : snapshot ? (
         <>
           <TitleBar
             title={workspace === 'present' ? snapshot.service.name : workspace === 'plan' ? 'Planner' : editLibraries.find((l) => l.key === editSelection.library)!.label}
@@ -76,6 +88,7 @@ export function App() {
             workspace={workspace}
             appearance={appearance}
             windowState={windowState}
+            onLock={() => setLocking(true)}
             onSearch={() => openQuickAdd()}
             onWorkspace={setWorkspace}
             onAppearance={setAppearance}
@@ -86,6 +99,7 @@ export function App() {
             <PlanWorkspace snapshot={snapshot} selection={planSelection} onSelection={setPlanSelection} onQuickAdd={openQuickAdd} onPresent={() => setWorkspace('present')} />
           )}
           {addTarget && <QuickAdd snapshot={snapshot} target={addTarget} onClose={() => setAddTarget(null)} />}
+          {isLocking && <VolunteerDialog hasPin={snapshot.mode.hasPin} onClose={() => setLocking(false)} />}
           {sheet && <EditorSheet key={`${sheet.kind}/${sheet.id}`} snapshot={snapshot} document={sheet} onClose={() => setSheet(null)} onOpenTheme={openTheme} />}
         </>
       ) : (

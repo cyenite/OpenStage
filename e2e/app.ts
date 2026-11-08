@@ -19,7 +19,7 @@ export async function launch(userData: string) {
   const operator = await find('operator.html')
   const projector = await find('output=projector')
   const stage = await find('output=stage')
-  await expect(operator.getByRole('tab', { name: 'Present' })).toBeVisible()
+  await expect(operator.locator('.titlebar:not(.titlebar-empty)')).toBeVisible({ timeout: 15_000 })
   return { app, operator, projector, stage }
 }
 

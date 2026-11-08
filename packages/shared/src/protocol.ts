@@ -47,6 +47,13 @@ export type Command =
   | { type: 'background.set'; backgroundId: Id }
   | { type: 'lowerThird.set'; lowerThirdId: Id }
   | { type: 'audio.set'; audioCueId: Id }
+  /** Locks the operator window to volunteer controls; a PIN must be given the first time, to set it. */
+  | { type: 'volunteer.lock'; pin?: string }
+  /** Only while unlocked. */
+  | { type: 'volunteer.setPin'; pin: string }
+  /** Runs the service off-air: the screens keep what they showed, and stopping puts everything back. */
+  | { type: 'rehearsal.start' }
+  | { type: 'rehearsal.stop' }
   | { type: 'stage.layout'; layout: StageLayoutKey }
   /** Null clears the message. */
   | { type: 'stage.message'; text: string | null }
@@ -149,6 +156,7 @@ export type LibraryQuery =
   | { type: 'library.list'; kind: DocumentKind }
   | { type: 'scripture.slides'; passageId: Id }
   | { type: 'song.outlines'; songIds: Id[] }
+  | { type: 'volunteer.unlock'; pin: string }
   /** Reads dropped or picked files and says what importing them would do; nothing is saved yet. */
   | { type: 'import.preview'; files: ImportFile[] }
   /** Carries out a preview with the operator's choices and reports what happened. */
@@ -207,6 +215,8 @@ export type QueryResult =
   | { type: 'outlines'; outlines: SongOutline[] }
   | { type: 'importPlan'; plan: ImportPlan }
   | { type: 'importReport'; report: ImportReport }
+  /** `waitSeconds` is set after too many wrong PINs. */
+  | { type: 'unlock'; isUnlocked: boolean; waitSeconds: number }
 
 export interface SearchHit {
   kind: DocumentKind
@@ -217,6 +227,20 @@ export interface SearchHit {
   /** Matched terms are wrapped in \u0001 and \u0002 so the UI can highlight them. */
   snippet: string
 }
+
+/** Commands a locked operator window may still send: presenting, clearing and rehearsing, nothing that changes the library. */
+export const volunteerCommands = new Set<Command['type']>([
+  'item.select',
+  'preview.set',
+  'live.take',
+  'live.next',
+  'live.previous',
+  'layer.clear',
+  'layer.clearAll',
+  'rehearsal.start',
+  'rehearsal.stop',
+  'volunteer.lock',
+])
 
 export interface ServiceSummary {
   id: Id
@@ -252,6 +276,7 @@ export interface OperatorSnapshot {
   service: Service
   library: { themes: Theme[]; templates: ServiceTemplate[]; backgrounds: Background[]; lowerThirds: LowerThird[]; audioCues: AudioCue[] }
   bibles: BibleInfo[]
+  mode: { isLocked: boolean; hasPin: boolean; isRehearsing: boolean }
   /** Every service, for the calendar, ordered by date and time. */
   services: ServiceSummary[]
   /** How many songs and services point at each theme, so the UI can say why one cannot be deleted. */

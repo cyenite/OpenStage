@@ -2787,6 +2787,230 @@ input[type='checkbox'] {
   margin: 4px 0 0;
 }
 
+.workspace-volunteer {
+  grid-template: 'title title' auto 'side main' 1fr / 280px 1fr;
+}
+
+.app.is-rehearsing .titlebar {
+  background: color-mix(in srgb, var(--accent) 16%, var(--chrome));
+}
+
+.rehearsal-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px 3px 12px;
+  border-radius: 999px;
+  background: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--on-accent);
+  -webkit-app-region: no-drag;
+}
+
+.lock-button {
+  color: var(--accent);
+}
+
+.titlebar-spacer {
+  flex: 1;
+}
+
+.volunteer-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.volunteer-name svg {
+  color: var(--accent);
+}
+
+.volunteer-order ol {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.volunteer-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  font-size: 15px;
+  text-align: left;
+}
+
+.volunteer-item.is-live {
+  border-color: color-mix(in srgb, var(--live) 45%, transparent);
+  background: var(--live-wash);
+  font-weight: 700;
+}
+
+.volunteer-item.is-done {
+  color: var(--faint);
+}
+
+.volunteer-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+
+.volunteer-item.is-live .volunteer-dot {
+  background: var(--live);
+}
+
+.volunteer-item.is-done .volunteer-dot {
+  background: var(--light-off);
+}
+
+.volunteer-main {
+  gap: 20px;
+  padding: 24px;
+}
+
+.volunteer-now,
+.volunteer-next {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.volunteer-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.volunteer-label.is-live {
+  color: var(--live-text);
+}
+
+.volunteer-label .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--live);
+}
+
+.volunteer-screen {
+  aspect-ratio: 16 / 9;
+  width: min(100%, calc(46vh * 16 / 9));
+  overflow: hidden;
+  border: 3px solid var(--live);
+  border-radius: 14px;
+}
+
+.volunteer-next {
+  max-width: 520px;
+}
+
+.volunteer-next-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: var(--raised);
+}
+
+.volunteer-next-text {
+  font: 500 15px/1.4 var(--serif);
+  white-space: pre-line;
+  color: var(--text-soft);
+}
+
+.volunteer-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: auto;
+}
+
+.volunteer-buttons button {
+  min-height: 96px;
+  border-radius: 18px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.volunteer-buttons .volunteer-go {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.volunteer-buttons .volunteer-clear {
+  font-size: 18px;
+}
+
+.volunteer-back {
+  flex: 1 1 180px;
+  border: 1px solid var(--line-strong);
+  background: var(--raised);
+}
+
+.volunteer-go {
+  flex: 3 1 360px;
+  border: 0;
+  background: var(--accent);
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--on-accent);
+}
+
+.volunteer-clear {
+  flex: 1 1 180px;
+  border: 1px solid color-mix(in srgb, var(--live) 40%, transparent);
+  background: var(--live-wash);
+  color: var(--live-text);
+}
+
+.volunteer-note {
+  font-size: 12px;
+}
+
+.pin-dialog {
+  width: min(440px, 92vw);
+}
+
+.pin-dialog p {
+  margin: 0;
+}
+
+.field .pin-input {
+  font-size: 22px;
+  letter-spacing: 0.4em;
+  text-align: center;
+}
+
+.volunteer-now.is-rehearsing .volunteer-screen {
+  border-color: var(--accent);
+}
+
+.volunteer-now.is-rehearsing .volunteer-label {
+  color: var(--accent);
+}
+
+.volunteer-now.is-rehearsing .volunteer-label .dot {
+  background: var(--accent);
+}
+
 /* Library dock (Present), quick add, item inspector and editor sheet. */
 
 .library-dock {

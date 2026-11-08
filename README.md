@@ -76,6 +76,13 @@ folder.
 | `e2e` | Playwright tests that launch the real Electron app |
 | `docs` | Research, blueprint and plans |
 
+## Volunteer mode and rehearsal
+
+The lock button in the title bar sets a PIN and locks the window to a simple screen: the service, what is
+on screen, what comes next, and big Back, Next and Clear buttons. Nothing can be edited or deleted until
+someone unlocks it with the PIN, and the lock survives a restart. Rehearse runs the service off-air: the
+screens keep what they showed, and stopping puts everything back.
+
 ## Importing
 
 Edit → Songs → Import songs (or drop files on the library) reads OpenLyrics, ChordPro, SongSelect `.usr`/`.txt`,

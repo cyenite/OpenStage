@@ -116,6 +116,10 @@ export function PlanWorkspace({ snapshot, selection, onSelection, onQuickAdd, on
                   templateName={snapshot.library.templates.find((t) => t.id === service.templateId)?.name}
                   onPlan={() => select({ serviceId: service.id })}
                   onPresent={() => present(service.id)}
+                  onRehearse={() => {
+                    dispatch({ type: 'rehearsal.start' })
+                    present(service.id)
+                  }}
                 />
               ))}
               {dayServices.length === 0 && (
@@ -159,9 +163,10 @@ interface ServiceCardProps {
   templateName: string | undefined
   onPlan: () => void
   onPresent: () => void
+  onRehearse: () => void
 }
 
-function ServiceCard({ service, isOpen, templateName, onPlan, onPresent }: ServiceCardProps) {
+function ServiceCard({ service, isOpen, templateName, onPlan, onPresent, onRehearse }: ServiceCardProps) {
   const setTeam = (team: { operator?: string; stage?: string }) => dispatch({ type: 'service.edit', serviceId: service.id, edit: { type: 'service.setTeam', team } })
   return (
     <article id={`service-${service.id}`} className={`service-card is-${service.readiness.state}`}>
@@ -188,6 +193,9 @@ function ServiceCard({ service, isOpen, templateName, onPlan, onPresent }: Servi
       <div className="service-card-actions">
         <button className="button-quiet" onClick={onPlan}>
           Plan the order
+        </button>
+        <button className="button-quiet" title="Practise this service without changing the screens" onClick={onRehearse}>
+          Rehearse
         </button>
         <button className="button-primary" onClick={onPresent}>
           Open to present

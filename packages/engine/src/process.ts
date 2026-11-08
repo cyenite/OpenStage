@@ -1,7 +1,8 @@
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ClientMessage, EngineConnect, EngineMessage, EngineState } from '@openstage/shared'
 import { loadBibles, saveBible } from './bibles/store'
-import { Engine, type ClientPort } from './engine'
+import { Engine, type ClientPort, type EngineSettings } from './engine'
 import { atomicWriteJson, CoalescingWriter, loadLiveState } from './persistence'
 import { starterLibrary } from './starter-library'
 import { DocumentStore } from './store/document-store'
@@ -37,10 +38,15 @@ export async function startEngineProcess(): Promise<void> {
   const bibleFolders = [argument('bibles-dir'), join(dataDir, 'bibles')].filter((f): f is string => !!f)
   const bibles = await loadBibles(bibleFolders, (file, error) => console.warn('[engine] could not read Bible', file, error))
   const restored = await loadLiveState(statePath, library, bibles)
+  const settingsPath = join(dataDir, 'settings.json')
+  const settings = await loadSettings(settingsPath)
+  const settingsSaver = new CoalescingWriter<EngineSettings>((value) => atomicWriteJson(settingsPath, value), report('settings'))
 
   const engine = new Engine({
     index,
     bibles,
+    settings,
+    onSettingsChange: (value) => settingsSaver.save(value),
     library,
     restored,
     onStateChange: (state) => saver.save(state),
@@ -64,12 +70,23 @@ export async function startEngineProcess(): Promise<void> {
   parentPort.on('message', (event) => {
     const message = event.data as EngineConnect | { type: 'shutdown' }
     if (message.type === 'shutdown') {
-      void Promise.all([saver.flush(), store.flush(), usage.flush()]).then(() => process.exit(0))
+      void Promise.all([saver.flush(), store.flush(), usage.flush(), settingsSaver.flush()]).then(() => process.exit(0))
     } else if (message.type === 'connect' && event.ports[0]) {
       engine.connect(wrap(event.ports[0]), message.hello)
     }
   })
   parentPort.postMessage({ type: 'ready', restored: !!restored })
+}
+
+/** A settings file that does not read leaves the window unlocked with no PIN, rather than locked with no way in. */
+async function loadSettings(path: string): Promise<EngineSettings> {
+  try {
+    const raw = JSON.parse(await readFile(path, 'utf8')) as Partial<EngineSettings>
+    const hasPin = typeof raw.pinHash === 'string' && typeof raw.pinSalt === 'string'
+    return hasPin ? { pinHash: raw.pinHash!, pinSalt: raw.pinSalt!, isLocked: raw.isLocked === true } : { isLocked: false }
+  } catch {
+    return { isLocked: false }
+  }
 }
 
 /** The starter service lands on the coming Sunday, so a new calendar has something on it. */

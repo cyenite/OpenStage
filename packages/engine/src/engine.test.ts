@@ -492,3 +492,93 @@ describe('Engine stage screen', () => {
   })
 })
 
+describe('Engine volunteer mode and rehearsal', () => {
+  const setup = () => {
+    const clock = { now: 1_000_000 }
+    const saved: { pinHash?: string; isLocked: boolean }[] = []
+    const states: EngineState[] = []
+    const live: string[] = []
+    const engine = new Engine({
+      bibles: testBibles,
+      library: starterLibrary,
+      now: () => clock.now,
+      onSettingsChange: (s) => saved.push(s),
+      onStateChange: (s) => states.push(s),
+      onItemLive: (item) => live.push(item.id),
+    })
+    const unlock = (pin: string) => (engine as unknown as { query(q: object): { isUnlocked: boolean; waitSeconds: number } }).query({ type: 'volunteer.unlock', pin })
+    return { engine, clock, saved, states, live, unlock }
+  }
+
+  it('needs a PIN to lock the first time, and stores only its hash', () => {
+    const { engine, saved } = setup()
+    engine.dispatch({ type: 'volunteer.lock' })
+    engine.dispatch({ type: 'volunteer.lock', pin: '12' })
+    expect(engine.snapshot().mode.isLocked).toBe(false)
+    engine.dispatch({ type: 'volunteer.lock', pin: '2580' })
+    expect(engine.snapshot().mode).toEqual({ isLocked: true, hasPin: true, isRehearsing: false })
+    expect(saved.at(-1)).toMatchObject({ isLocked: true, pinHash: expect.stringMatching(/^[0-9a-f]{64}$/) })
+    expect(JSON.stringify(saved)).not.toContain('2580')
+  })
+
+  it('refuses anything but presenting while locked', () => {
+    const { engine, unlock } = setup()
+    engine.dispatch({ type: 'volunteer.lock', pin: '2580' })
+    engine.dispatch({ type: 'live.take' })
+    engine.dispatch({ type: 'live.next' })
+    expect(engine.current.live.slide).toEqual({ itemId: 'item-amazing-grace', index: 1 })
+    engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setTitle', title: 'Changed' } })
+    engine.dispatch({ type: 'service.edit', serviceId: 'sunday', edit: { type: 'service.removeItem', itemId: 'item-john-3' } })
+    engine.dispatch({ type: 'song.delete', songId: 'it-is-well' })
+    engine.dispatch({ type: 'volunteer.setPin', pin: '0000' })
+    expect(engine.documents.songs['amazing-grace']!.title).toBe('Amazing Grace')
+    expect(engine.service.items).toHaveLength(3)
+    expect(unlock('0000').isUnlocked).toBe(false)
+    expect(unlock('2580').isUnlocked).toBe(true)
+    engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setTitle', title: 'Changed' } })
+    expect(engine.documents.songs['amazing-grace']!.title).toBe('Changed')
+  })
+
+  it('blocks unlocking for 30 seconds after five wrong PINs', () => {
+    const { engine, clock, unlock } = setup()
+    engine.dispatch({ type: 'volunteer.lock', pin: '2580' })
+    for (let i = 0; i < 4; i++) expect(unlock('1111')).toEqual({ type: 'unlock', isUnlocked: false, waitSeconds: 0 })
+    expect(unlock('1111')).toMatchObject({ isUnlocked: false, waitSeconds: 30 })
+    expect(unlock('2580')).toMatchObject({ isUnlocked: false, waitSeconds: 30 })
+    clock.now += 31_000
+    expect(unlock('2580').isUnlocked).toBe(true)
+  })
+
+  it('keeps the screens and the saved state on air while rehearsing, then restores it', () => {
+    const { engine, states, live } = setup()
+    const projector = fakePort()
+    engine.connect(projector.port, { role: 'output', outputId: 'projector' })
+    engine.dispatch({ type: 'live.take' })
+    const onAir = engine.current
+    const frames = projector.renders().length
+    const saves = states.length
+
+    engine.dispatch({ type: 'rehearsal.start' })
+    engine.dispatch({ type: 'item.select', itemId: 'item-it-is-well' })
+    engine.dispatch({ type: 'live.take' })
+    engine.dispatch({ type: 'layer.clearAll' })
+    expect(projector.renders()).toHaveLength(frames)
+    expect(states).toHaveLength(saves)
+    expect(live).toEqual(['item-amazing-grace'])
+    expect(engine.snapshot().mode.isRehearsing).toBe(true)
+    expect(engine.snapshot().liveRender.background).toBeNull()
+
+    engine.dispatch({ type: 'rehearsal.stop' })
+    expect(engine.current).toEqual(onAir)
+    expect(engine.snapshot().liveRender.slide!.boxes[0]!.lines[0]).toBe('Amazing grace, how sweet the sound')
+  })
+
+  it('starts locked when the saved settings say so, and refuses imports while locked', () => {
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary, settings: { isLocked: true, pinHash: 'aa', pinSalt: 'bb' } })
+    const query = (q: object) => (engine as unknown as { query(q: object): { type: string } }).query(q)
+    expect(engine.snapshot().mode.isLocked).toBe(true)
+    expect(query({ type: 'import.preview', files: [] }).type).toBe('hits')
+  })
+})
+
+
