@@ -49,11 +49,32 @@ describe('reduce', () => {
     expect(state.preview).toEqual({ itemId: song!.itemId, index: 1 })
   })
 
-  it('moves into the next service item at the end of a deck', () => {
+  it('moves into the next service item at the end of a deck, keeping the item on screen selected', () => {
     const last = reduce(start, { type: 'preview.set', ref: { itemId: song!.itemId, index: 7 } }, decks)
     const state = reduce(last, { type: 'live.take' }, decks)
     expect(state.preview).toEqual({ itemId: scripture!.itemId, index: 0 })
-    expect(state.selectedItemId).toBe(scripture!.itemId)
+    expect(state.selectedItemId).toBe(song!.itemId)
+  })
+
+  it('shows a slide straight away and lifts a black screen', () => {
+    const black = reduce(start, { type: 'screens.black', isBlack: true }, decks)
+    const state = reduce(black, { type: 'live.show', ref: { itemId: scripture!.itemId, index: 1 } }, decks)
+    expect(state.live.slide).toEqual({ itemId: scripture!.itemId, index: 1 })
+    expect(state.isBlack).toBe(false)
+    expect(reduce(start, { type: 'live.show', ref: { itemId: 'gone', index: 0 } }, decks)).toBe(start)
+  })
+
+  it('keeps the layers under a black screen', () => {
+    const live = reduce(start, { type: 'live.take' }, decks)
+    const black = reduce(live, { type: 'screens.black', isBlack: true }, decks)
+    expect(black.live).toEqual(live.live)
+    expect(reduce(black, { type: 'screens.black', isBlack: false }, decks)).toEqual(live)
+  })
+
+  it('switches outputs off and on', () => {
+    const off = reduce(start, { type: 'output.power', outputId: 'stage', isOn: false }, decks)
+    expect(off.outputsOff).toEqual(['stage'])
+    expect(reduce(off, { type: 'output.power', outputId: 'stage', isOn: true }, decks).outputsOff).toEqual([])
   })
 
   it('steps live back without crossing into the previous item', () => {
@@ -319,11 +340,11 @@ describe('Engine themes', () => {
     const projector = fakePort()
     engine.connect(projector.port, { role: 'output', outputId: 'projector' })
     engine.dispatch({ type: 'live.take' })
-    expect(projector.renders().at(-1)!.slide!.fill).toBeNull()
+    expect(projector.renders().at(-1)!.background).toEqual(starterLibrary.backgrounds.candle!.render)
     engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setTheme', themeId: 'paper' } })
-    expect(projector.renders().at(-1)!.slide).toMatchObject({ fill: { kind: 'color', color: '#F4EFE6' }, boxes: [{ color: '#1A1A1A' }] })
+    expect(projector.renders().at(-1)).toMatchObject({ background: { kind: 'color', color: '#F4EFE6' }, slide: { fill: null, boxes: [{ color: '#1A1A1A' }] } })
     engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setTheme', themeId: 'gone' } })
-    expect(projector.renders().at(-1)!.slide!.fill).toBeNull()
+    expect(projector.renders().at(-1)!.background).toEqual(starterLibrary.backgrounds.candle!.render)
   })
 
   it('draws an item background in place of the theme fill, in preview and live', () => {
@@ -333,14 +354,74 @@ describe('Engine themes', () => {
     engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setTheme', themeId: 'paper' } })
     const set = (backgroundId: string | null) =>
       engine.dispatch({ type: 'service.edit', serviceId: 'sunday', edit: { type: 'service.updateItem', itemId: 'item-amazing-grace', changes: { backgroundId } } })
-    set('candle')
-    expect(engine.snapshot().previewRender.slide!.fill).toEqual({ kind: 'gradient', from: '#4A2E14', to: '#140C06', angle: 180 })
+    set('night-blue')
+    expect(engine.snapshot().previewRender.background).toEqual({ kind: 'color', color: '#102033' })
     engine.dispatch({ type: 'live.take' })
-    expect(projector.renders().at(-1)!.slide!.fill).toMatchObject({ kind: 'gradient', from: '#4A2E14' })
+    expect(projector.renders().at(-1)!.background).toEqual({ kind: 'color', color: '#102033' })
     set('gone')
-    expect(projector.renders().at(-1)!.slide!.fill).toEqual({ kind: 'color', color: '#F4EFE6' })
+    expect(projector.renders().at(-1)!.background).toEqual({ kind: 'color', color: '#F4EFE6' })
     set(null)
-    expect(projector.renders().at(-1)!.slide!.fill).toEqual({ kind: 'color', color: '#F4EFE6' })
+    expect(projector.renders().at(-1)!.background).toEqual({ kind: 'color', color: '#F4EFE6' })
+  })
+
+  it('keeps the words on screen when the background changes, and a live pick lasts only for its item', () => {
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary })
+    const projector = fakePort()
+    engine.connect(projector.port, { role: 'output', outputId: 'projector' })
+    engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setTheme', themeId: 'paper' } })
+    engine.dispatch({ type: 'live.take' })
+    engine.dispatch({ type: 'background.set', backgroundId: 'forest-light' })
+    expect(projector.renders().at(-1)).toMatchObject({ background: starterLibrary.backgrounds['forest-light']!.render, slide: { key: 'item-amazing-grace#0' } })
+    engine.dispatch({ type: 'live.next' })
+    expect(projector.renders().at(-1)!.background).toEqual(starterLibrary.backgrounds['forest-light']!.render)
+    engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setTheme', themeId: null } })
+    engine.dispatch({ type: 'live.show', ref: { itemId: 'item-john-3', index: 0 } })
+    expect(projector.renders().at(-1)!.background).toEqual(starterLibrary.backgrounds['forest-light']!.render)
+    engine.dispatch({ type: 'service.edit', serviceId: 'sunday', edit: { type: 'service.updateItem', itemId: 'item-it-is-well', changes: { backgroundId: 'plum-still' } } })
+    engine.dispatch({ type: 'live.show', ref: { itemId: 'item-it-is-well', index: 0 } })
+    expect(projector.renders().at(-1)!.background).toEqual(starterLibrary.backgrounds['plum-still']!.render)
+  })
+
+  it('blanks the audience screens on black and leaves the stage screen alone', () => {
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary })
+    const projector = fakePort()
+    const stage = fakePort()
+    engine.connect(projector.port, { role: 'output', outputId: 'projector' })
+    engine.connect(stage.port, { role: 'output', outputId: 'stage' })
+    engine.dispatch({ type: 'lowerThird.set', lowerThirdId: 'pastor' })
+    engine.dispatch({ type: 'live.take' })
+    engine.dispatch({ type: 'screens.black', isBlack: true })
+    expect(projector.renders().at(-1)).toMatchObject({ background: null, slide: null, lowerThird: null })
+    expect(stage.renders().at(-1)!.stage!.current.length).toBeGreaterThan(0)
+    engine.dispatch({ type: 'screens.black', isBlack: false })
+    expect(projector.renders().at(-1)).toMatchObject({ slide: { key: 'item-amazing-grace#0' }, lowerThird: { key: 'pastor' } })
+  })
+
+  it('sends nothing to a switched-off output while the operator still sees what it would show', () => {
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary })
+    const stage = fakePort()
+    engine.connect(stage.port, { role: 'output', outputId: 'stage' })
+    engine.dispatch({ type: 'live.take' })
+    engine.dispatch({ type: 'output.power', outputId: 'stage', isOn: false })
+    expect(stage.renders().at(-1)!.stage).toBeNull()
+    const snapshot = engine.snapshot()
+    expect(snapshot.outputs.find((o) => o.id === 'stage')!.isOn).toBe(false)
+    expect(snapshot.stageRender.stage!.current.length).toBeGreaterThan(0)
+    engine.dispatch({ type: 'rehearsal.start' })
+    engine.dispatch({ type: 'rehearsal.stop' })
+    expect(engine.current.outputsOff).toEqual(['stage'])
+  })
+
+  it('saves, edits and deletes lower thirds, taking a deleted one off the screen', () => {
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary })
+    engine.dispatch({ type: 'lowerThird.save', lowerThird: { id: 'guest', title: '  Rev. Achieng  ', subtitle: 'Guest speaker' } })
+    expect(engine.documents.lowerThirds.guest).toEqual({ id: 'guest', title: 'Rev. Achieng', subtitle: 'Guest speaker' })
+    engine.dispatch({ type: 'lowerThird.save', lowerThird: { id: 'guest', title: '', subtitle: 'x' } })
+    expect(engine.documents.lowerThirds.guest!.title).toBe('Rev. Achieng')
+    engine.dispatch({ type: 'lowerThird.set', lowerThirdId: 'guest' })
+    engine.dispatch({ type: 'lowerThird.delete', lowerThirdId: 'guest' })
+    expect(engine.documents.lowerThirds.guest).toBeUndefined()
+    expect(engine.current.live.lowerThird).toBeNull()
   })
 
   it('updates the live slide when its theme is edited, and only deletes unused themes', () => {

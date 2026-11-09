@@ -10,7 +10,7 @@ test('a typed reference and passage sets use the bundled Bibles', async () => {
     await expect(operator.locator('.quick-add-row').first()).toContainText('Psalms 23:1')
     await search.press('Enter')
     await expect(orderItem(operator, /^BK Psalms 23:1/)).toBeVisible()
-    await operator.getByRole('button', { name: /Send to live/ }).click()
+    await operator.keyboard.press('Space')
     await expect(mainText(projector)).toHaveText(/The LORD is my shepherd/)
 
     await operator.getByRole('tab', { name: 'Edit' }).click()

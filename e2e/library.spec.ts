@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test'
-import { launch, mainText, orderItem, tempUserData } from './app'
+import { background, launch, mainText, orderItem, tempUserData } from './app'
 
 test('the Library adds after the selected item and sets backgrounds without leaving Present', async () => {
   const { app, operator, projector } = await launch(tempUserData())
   try {
     const order = operator.getByRole('navigation', { name: 'Service order' }).locator('.order-name')
     await orderItem(operator, /^SG Amazing Grace/).click()
-    await operator.getByRole('button', { name: /Send to live/ }).click()
+    await operator.keyboard.press('Space')
     await expect(mainText(projector)).toHaveText(/Amazing grace/i)
 
     await operator.keyboard.press('Control+k')
@@ -28,14 +28,23 @@ test('the Library adds after the selected item and sets backgrounds without leav
     await expect(mainText(projector)).toHaveText(/Amazing grace/i)
 
     await orderItem(operator, /^SG Amazing Grace/).click()
-    await operator.getByRole('radiogroup', { name: 'Background for Amazing Grace' }).getByRole('radio', { name: 'Candle' }).click()
-    await expect(orderItem(operator, /^SG Amazing Grace/).getByRole('img', { name: 'Candle background' })).toBeVisible()
-    await expect(projector.locator('.os-slide').last()).toHaveCSS('background-image', /linear-gradient/)
+    await operator.getByRole('button', { name: 'Amazing Grace settings' }).click()
+    await operator.getByRole('radiogroup', { name: 'Background for Amazing Grace' }).getByRole('radio', { name: 'Forest light' }).click()
+    await expect(orderItem(operator, /^SG Amazing Grace/).getByRole('img', { name: 'Forest light background' })).toBeVisible()
+    await expect(background(projector)).toHaveCSS('background-image', /rgb\(29, 58, 38\)/)
+    await expect(mainText(projector)).toHaveText(/Amazing grace/i)
+    await operator.keyboard.press('Escape')
+    await expect(operator.getByRole('dialog', { name: 'Amazing Grace settings' })).toHaveCount(0)
+    await expect(projector.locator('.os-slide')).not.toHaveCount(0)
 
     await operator.getByRole('tab', { name: 'Backgrounds' }).click()
+    await operator.getByRole('button', { name: 'Show Night blue on the screen now' }).click()
+    await expect(background(projector)).toHaveCSS('background-color', 'rgb(16, 32, 51)')
+    await expect(mainText(projector)).toHaveText(/Amazing grace/i)
     await operator.keyboard.press('Control+k')
     await operator.getByRole('textbox', { name: 'Search everything to add' }).fill('grace')
     await operator.keyboard.press('Escape')
+    await operator.getByRole('button', { name: 'Amazing Grace settings' }).click()
     await operator.getByRole('button', { name: 'Edit lyrics' }).click()
     await expect(operator.getByRole('dialog', { name: 'Edit song' })).toBeVisible()
     await operator.getByRole('button', { name: 'Done' }).click()

@@ -43,6 +43,7 @@ import {
   type EngineState,
   type Id,
   type Library,
+  type LowerThird,
   type OperatorSnapshot,
   type RenderState,
   type SearchHit,
@@ -61,7 +62,7 @@ import type { ImportedSong, Parsed } from './import/types'
 import { buildDecks, buildInstantDecks, scriptureSlides } from './decks'
 import { cleanInstant, cleanSource, pruneInstant } from './instant'
 import { applyPassageEdit, applyServiceEdit, applySongEdit, applyTemplateEdit, applyThemeEdit, createPassage, createSong, createTemplate, createTheme, isPassageRef } from './edits'
-import { outputs, resolveRender, type OutputId } from './resolve'
+import { blankRender, outputs, resolveRender, type OutputId } from './resolve'
 import { initialState, noTiming, reduce, sanitize } from './state'
 import { DocumentHistory } from './store/history'
 import type { LibrarySearch } from './store/library-index'
@@ -308,6 +309,10 @@ export class Engine {
       }
       case 'bible.remove':
         return this.removeBible(command.code)
+      case 'lowerThird.save':
+        return this.saveLowerThird(command.lowerThird)
+      case 'lowerThird.delete':
+        return this.deleteLowerThird(command.lowerThirdId)
       case 'document.undo':
         if (isEditable(command.ref?.kind)) this.edit(command.ref.kind, command.ref.id, (history) => history.undo())
         return
@@ -357,9 +362,12 @@ export class Engine {
           sentSeq: channel?.render.seq ?? 0,
           ackedSeq: channel?.ackedSeq ?? 0,
           isConnected: [...this.clients].some((c) => c.hello.outputId === o.id),
+          isOn: !this.state.outputsOff.includes(o.id),
         }
       }),
-      liveRender: this.onAir ? { seq: 0, ...resolveRender(this.state, this.contextFor(this.state), projector) } : this.channels.get(projector.id)!.render,
+      // What the screens would show even when switched off, so the operator can check before turning one on.
+      liveRender: { seq: 0, ...resolveRender(this.state, this.contextFor(this.state), projector) },
+      stageRender: { seq: 0, ...resolveRender(this.state, this.contextFor(this.state), outputs[1]) },
       previewRender: { seq: 0, ...resolveRender(this.state, this.contextFor(this.state), projector, this.state.preview) },
     }
   }
@@ -634,6 +642,21 @@ export class Engine {
   }
 
   /** Refused while a service still uses the passage. */
+  private saveLowerThird(raw: unknown): void {
+    const lowerThird = raw as Partial<LowerThird> | null
+    const text = (value: unknown, max: number) => (typeof value === 'string' ? value.trim().slice(0, max) : '')
+    if (!isSafeId(lowerThird?.id) || !text(lowerThird.title, 120)) return
+    this.store('lowerThirds', { id: lowerThird.id, title: text(lowerThird.title, 120), subtitle: text(lowerThird.subtitle, 160) })
+  }
+
+  private deleteLowerThird(lowerThirdId: Id): void {
+    if (!Object.hasOwn(this.library.lowerThirds, lowerThirdId)) return
+    const { [lowerThirdId]: _removed, ...lowerThirds } = this.library.lowerThirds
+    this.library = { ...this.library, lowerThirds }
+    this.options.onDocumentRemove?.('lowerThirds', lowerThirdId)
+    this.afterLibraryChange({ kind: 'lowerThirds', id: lowerThirdId })
+  }
+
   private deletePassage(passageId: Id): void {
     const isUsed = Object.values(this.library.services).some((s) => s.items.some((i) => i.type === 'scripture' && i.passageId === passageId))
     if (!Object.hasOwn(this.library.passages, passageId) || isUsed) return
@@ -887,7 +910,8 @@ export class Engine {
     if (isRehearsing) {
       this.onAir = this.state
     } else {
-      this.state = sanitize(this.onAir!, this.decksFor(this.onAir!), this.library)
+      // Switching a screen off or on is about the hardware, so it survives the end of a rehearsal.
+      this.state = sanitize({ ...this.onAir!, outputsOff: this.state.outputsOff }, this.decksFor(this.onAir!), this.library)
       this.onAir = null
     }
     this.publish()
@@ -904,7 +928,7 @@ export class Engine {
     const onScreen = this.onAir ? sanitize(this.onAir, this.decksFor(this.onAir), this.library) : this.state
     const context = this.contextFor(onScreen)
     for (const profile of outputs) {
-      const resolved = resolveRender(onScreen, context, profile)
+      const resolved = this.state.outputsOff.includes(profile.id) ? blankRender(profile) : resolveRender(onScreen, context, profile)
       const json = JSON.stringify(resolved)
       const channel = this.channels.get(profile.id)
       if (channel?.json === json) continue

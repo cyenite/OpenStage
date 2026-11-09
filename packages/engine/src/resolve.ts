@@ -4,7 +4,6 @@ import {
   lookup,
   shortLabel,
   type BackgroundRender,
-  type SlideRender,
   type StageRender,
   type StageSection,
   type Deck,
@@ -53,10 +52,6 @@ function stageRender(state: EngineState, decks: Deck[], slideRef: SlideRef | nul
   }
 }
 
-function withFill(slide: SlideRender, fill: BackgroundRender | undefined): SlideRender {
-  return fill ? { ...slide, fill } : slide
-}
-
 export interface ResolveContext {
   decks: Deck[]
   library: Library
@@ -69,21 +64,39 @@ export function resolveRender(
   slideRef: SlideRef | null = state.live.slide,
 ): Omit<RenderState, 'seq'> {
   const shows = (layer: LayerKey) => (profile.layers as readonly LayerKey[]).includes(layer)
-  const themes = context.library.themes
-  const slide = shows('slide') && profile.kind === 'audience' ? findSlide(context.decks, slideRef) : null
-  const deck = findDeck(context.decks, slideRef)
-  const theme = lookup(themes, deck?.themeId) ?? lookup(themes, classicTheme.id) ?? classicTheme
-  const itemFill = lookup(context.library.backgrounds, deck?.backgroundId)?.render
-  const background = shows('background') && state.live.background ? context.library.backgrounds[state.live.background]?.render ?? null : null
-  const lowerThird = shows('lowerThird') && state.live.lowerThird ? context.library.lowerThirds[state.live.lowerThird] ?? null : null
+  const isBlank = profile.kind === 'audience' && state.isBlack
+  const slide = shows('slide') && profile.kind === 'audience' && !isBlank ? findSlide(context.decks, slideRef) : null
+  const lowerThird = shows('lowerThird') && !isBlank ? lookup(context.library.lowerThirds, state.live.lowerThird) ?? null : null
 
   return {
     aspect: 16 / 9,
     outputId: profile.id,
     transitionMs: profile.transitionMs,
-    background,
-    slide: slide && slideRef ? withFill(layoutSlide(theme, profile.id, slide, `${slideRef.itemId}#${slideRef.index}`), itemFill) : null,
+    background: shows('background') && !isBlank ? backgroundFor(state, context, slideRef) : null,
+    slide: slide && slideRef ? { ...layoutSlide(themeFor(context, slideRef), profile.id, slide, `${slideRef.itemId}#${slideRef.index}`), fill: null } : null,
     lowerThird: lowerThird ? { key: lowerThird.id, title: lowerThird.title, subtitle: lowerThird.subtitle } : null,
     stage: profile.kind === 'stage' ? stageRender(state, context.decks, slideRef) : null,
   }
+}
+
+/** An output the operator switched off: nothing on it, so the projector shows black and the stage screen goes dark. */
+export function blankRender(profile: OutputProfile): Omit<RenderState, 'seq'> {
+  return { aspect: 16 / 9, outputId: profile.id, transitionMs: profile.transitionMs, background: null, slide: null, lowerThird: null, stage: null }
+}
+
+function themeFor(context: ResolveContext, slideRef: SlideRef | null) {
+  const themes = context.library.themes
+  return lookup(themes, findDeck(context.decks, slideRef)?.themeId) ?? lookup(themes, classicTheme.id) ?? classicTheme
+}
+
+/**
+ * Everything behind the words is drawn on the background layer, so it never fades with each slide and never covers them.
+ * A background the operator picked for the item on screen wins, then the item's own, then its theme's fill, then the
+ * operator's last pick. Clearing the background (F1) clears only the pick, so a light theme never ends up on black.
+ */
+export function backgroundFor(state: EngineState, context: ResolveContext, slideRef: SlideRef | null): BackgroundRender | null {
+  const pick = lookup(context.library.backgrounds, state.live.background)?.render ?? null
+  const deck = findDeck(context.decks, slideRef)
+  if (pick && (!deck || state.backgroundPickedFor === deck.itemId)) return pick
+  return lookup(context.library.backgrounds, deck?.backgroundId)?.render ?? (deck ? themeFor(context, slideRef).fill : null) ?? pick
 }

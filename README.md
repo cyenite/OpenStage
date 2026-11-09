@@ -35,11 +35,14 @@ folder.
 
 | Key | Action |
 |---|---|
-| Space | Send Preview to Live, queue the following slide |
-| → / PageDown, ← / PageUp | Next / previous live slide |
-| F1, F2, F3, F4 | Clear background, slides, lower third, audio |
-| Esc | Clear everything (black screen) |
-| Double-click a slide | Send it straight to Live |
+| Click a slide | Show it now |
+| Space | Show what is cued: the following slide, or what was just picked in the order or the Library |
+| → / PageDown, ← / PageUp | Next / previous slide, running on into the next item |
+| ↑ / ↓ | Select the previous / next service item (the screens do not change) |
+| C, 1-9, B, P, E, T, I | Jump to the chorus, verse n, bridge, pre-chorus, ending, tag or intro of the song on screen |
+| F1, F2, F3, F4 | Clear the background pick, slides, lower third, audio |
+| Esc | Black screen; press again to bring back what was there |
+| / or Ctrl+L (Cmd+L) | Open the Library drawer with its search focused |
 
 ## How it is built
 

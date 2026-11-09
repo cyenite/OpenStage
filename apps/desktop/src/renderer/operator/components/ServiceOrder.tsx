@@ -16,6 +16,7 @@ export function ServiceOrder({ snapshot, onAdd, onEdit, onOpenSongs }: ServiceOr
   const [dropItemId, setDropItemId] = useState<Id | null>(null)
   const backgrounds = Object.fromEntries(library.backgrounds.map((b) => [b.id, b]))
   const isBackgroundDrag = (event: React.DragEvent) => event.dataTransfer.types.includes(backgroundDragType)
+  const lastLive = service.items.findIndex((i) => i.id === state.timing.itemId)
   return (
     <nav className="sidebar service-order" aria-label="Service order">
       <div className="sidebar-head">
@@ -25,11 +26,11 @@ export function ServiceOrder({ snapshot, onAdd, onEdit, onOpenSongs }: ServiceOr
         </button>
       </div>
       <ol>
-        {service.items.map((item) => {
+        {service.items.map((item, index) => {
           const deck = decks.find((d) => d.itemId === item.id)
           const background = lookup(backgrounds, item.backgroundId)
           const isLive = state.live.slide?.itemId === item.id
-          const isNext = !isLive && state.preview?.itemId === item.id
+          const isDone = !isLive && index < lastLive
           const isSelected = state.selectedItemId === item.id
           const isDropTarget = dropItemId === item.id
           const canEdit = item.type === 'song' || item.type === 'scripture'
@@ -51,7 +52,7 @@ export function ServiceOrder({ snapshot, onAdd, onEdit, onOpenSongs }: ServiceOr
               }}
             >
               <button
-                className={`order-item${isSelected ? ' is-selected' : ''}${isLive ? ' is-live' : ''}${deck?.isPlaceholder ? ' is-placeholder' : ''}`}
+                className={`order-item${isSelected ? ' is-selected' : ''}${isLive ? ' is-live' : ''}${isDone ? ' is-done' : ''}${deck?.isPlaceholder ? ' is-placeholder' : ''}`}
                 aria-current={isSelected ? 'true' : undefined}
                 title={canEdit ? 'Double-click to edit' : undefined}
                 onClick={() => dispatch({ type: 'item.select', itemId: item.id })}
@@ -65,7 +66,6 @@ export function ServiceOrder({ snapshot, onAdd, onEdit, onOpenSongs }: ServiceOr
                   </span>
                 </span>
                 {isLive && <span className="order-tag is-live">LIVE</span>}
-                {isNext && <span className="order-tag is-next">NEXT</span>}
                 {background && <span className="order-swatch" style={{ background: swatchCss(background.render) }} role="img" aria-label={`${background.name} background`} />}
               </button>
               {!isLive && (

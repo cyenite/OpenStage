@@ -40,7 +40,7 @@ test('a service planned from a template is filled, staffed and presented', async
     await expect(operator.locator('.order-item')).toHaveCount(4)
     await expect(operator.locator('.timeline-item')).toHaveCount(4)
     await orderItem(operator, /^SG It Is Well/).click()
-    await operator.getByRole('button', { name: /Send to live/ }).click()
+    await operator.keyboard.press('Space')
     await expect(mainText(projector)).toHaveText(/When peace like a river/)
     await expect(operator.locator('.timeline-item.is-live')).toHaveText('It Is Well with My Soul')
   } finally {

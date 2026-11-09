@@ -3,24 +3,25 @@ import { launch, mainText, orderItem, tempUserData } from './app'
 
 process.env['OPENSTAGE_OFFLINE'] = '1'
 
-test('songs and verses go to Preview and Live straight from the Library, and join the schedule only on request', async () => {
+test('songs and verses open in the slide grid from the Library, show with one click, and join the service only on request', async () => {
   const { app, operator, projector } = await launch(tempUserData())
   try {
     const order = operator.getByRole('navigation', { name: 'Service order' }).locator('.order-name')
-    const preview = operator.getByTestId('monitor-preview')
-    const live = operator.getByTestId('monitor-live')
+    const grid = operator.getByRole('region', { name: 'Slides' })
+    const verse = (n: number) => operator.getByRole('list', { name: 'Verses' }).getByRole('button', { name: `Verse ${n}` })
     await expect(order).toHaveCount(3)
 
     await operator.getByRole('tab', { name: 'Songs' }).click()
     await operator.getByRole('list', { name: 'Songs' }).getByRole('button', { name: /It Is Well/ }).click()
-    await expect(preview.locator('.monitor-source')).toHaveText('Library')
-    const slides = operator.getByLabel('Song slides').getByRole('button')
-    await slides.nth(1).dblclick()
-    await expect(live.locator('.monitor-source')).toHaveText('Library')
-    await expect(slides.nth(1)).toContainText('LIVE')
-    const lyric = await mainText(projector).textContent()
+    await expect(grid.locator('.show-head')).toContainText('From library')
+    await expect(projector.locator('.os-slide')).toHaveCount(0)
+    await grid.getByTestId('slide-1').click()
+    await expect(mainText(projector)).toHaveText(/Whatever my lot/)
+    await expect(grid.getByTestId('slide-1')).toContainText('LIVE')
     await operator.keyboard.press('ArrowRight')
-    await expect(mainText(projector)).not.toHaveText(lyric!)
+    await expect(mainText(projector)).not.toHaveText(/Whatever my lot/)
+    await operator.keyboard.press('c')
+    await expect(grid.locator('.jump-chip.is-current')).toContainText('Chorus')
     await expect(order).toHaveCount(3)
 
     await operator.getByRole('tab', { name: 'Bible' }).click()
@@ -29,16 +30,16 @@ test('songs and verses go to Preview and Live straight from the Library, and joi
     const reference = operator.getByRole('textbox', { name: 'Go to reference' })
     await reference.fill('jn 3 16')
     await reference.press('Enter')
-    await expect(operator.getByRole('button', { name: 'Verse 16' })).toContainText('PREVIEW')
-    await expect(preview).toContainText('John 3:16')
-    await operator.getByRole('button', { name: 'Verse 17' }).dblclick()
+    await expect(grid.locator('.show-head')).toContainText('John 3')
+    await expect(mainText(projector)).not.toHaveText(/For God so loved/)
+    await verse(17).dblclick()
     await expect(mainText(projector)).toHaveText(/God sent not his Son into the world/)
-    await expect(operator.getByRole('button', { name: 'Verse 17' })).toContainText('LIVE')
+    await expect(verse(17)).toContainText('LIVE')
     await expect(order).toHaveCount(3)
 
-    await operator.getByRole('button', { name: 'Verse 16' }).click()
-    await operator.getByRole('button', { name: 'Verse 18' }).click({ modifiers: ['Shift'] })
-    await operator.getByRole('button', { name: /Add John 3:16-18 to schedule/ }).click()
+    await verse(16).click()
+    await verse(18).click({ modifiers: ['Shift'] })
+    await operator.getByRole('button', { name: /Add John 3:16-18 to the service/ }).click()
     await expect(orderItem(operator, /^BK John 3:16-18/)).toBeVisible()
     await expect(order).toHaveCount(4)
 

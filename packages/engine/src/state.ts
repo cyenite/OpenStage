@@ -8,6 +8,9 @@ export const noTiming: Timing = { itemId: null, itemStartedAt: null, serviceStar
 export function initialState(decks: Deck[], defaultBackgroundId: Id | null, serviceId: Id | null): EngineState {
   const first = decks.find((d) => d.slides.length > 0)
   return {
+    isBlack: false,
+    outputsOff: [],
+    backgroundPickedFor: null,
     instant: {},
     stage: initialStage,
     serviceId,
@@ -36,6 +39,8 @@ export function reduce(state: EngineState, command: Command, decks: Deck[]): Eng
     }
     case 'live.take':
       return state.preview ? goLive(state, state.preview, decks) : state
+    case 'live.show':
+      return isValid(decks, command.ref) ? goLive(state, command.ref, decks) : state
     case 'live.next': {
       if (!state.live.slide) return state.preview ? goLive(state, state.preview, decks) : state
       const next = step(decks, state.live.slide, 1)
@@ -49,11 +54,17 @@ export function reduce(state: EngineState, command: Command, decks: Deck[]): Eng
     case 'layer.clear':
       return { ...state, live: { ...state.live, [command.layer]: null } }
     case 'layer.clearAll':
-      return { ...state, live: emptyLive }
+      return { ...state, isBlack: false, live: emptyLive }
     case 'background.set':
-      return { ...state, live: { ...state.live, background: command.backgroundId } }
+      return { ...state, isBlack: false, backgroundPickedFor: state.live.slide?.itemId ?? null, live: { ...state.live, background: command.backgroundId } }
     case 'lowerThird.set':
-      return { ...state, live: { ...state.live, lowerThird: command.lowerThirdId } }
+      return { ...state, isBlack: false, live: { ...state.live, lowerThird: command.lowerThirdId } }
+    case 'screens.black':
+      return { ...state, isBlack: command.isBlack === true }
+    case 'output.power': {
+      const others = state.outputsOff.filter((id) => id !== command.outputId)
+      return { ...state, outputsOff: command.isOn === false ? [...others, String(command.outputId)] : others }
+    }
     case 'audio.set':
       return { ...state, live: { ...state.live, audio: command.audioCueId } }
     default:
@@ -61,9 +72,18 @@ export function reduce(state: EngineState, command: Command, decks: Deck[]): Eng
   }
 }
 
+/** Showing a slide lifts a black screen. A live background pick lasts only while its item is on screen. */
 function goLive(state: EngineState, ref: SlideRef, decks: Deck[]): EngineState {
   const preview = step(decks, ref, 1) ?? ref
-  return { ...state, preview, selectedItemId: selectable(state, preview.itemId), live: { ...state.live, slide: ref } }
+  const isSameItem = state.live.slide?.itemId === ref.itemId
+  return {
+    ...state,
+    isBlack: false,
+    backgroundPickedFor: isSameItem ? state.backgroundPickedFor : null,
+    preview,
+    selectedItemId: selectable(state, ref.itemId),
+    live: { ...state.live, slide: ref },
+  }
 }
 
 /** Library slides never become the selected service item, so adds still land after what the operator picked. */
@@ -90,7 +110,11 @@ export function sanitize(raw: Partial<EngineState>, decks: Deck[], library: Libr
   const isTimed = decks.some((d) => d.itemId === timing.itemId) && typeof timing.itemStartedAt === 'number'
   const preview = isValid(decks, raw.preview ?? null) ? raw.preview! : null
   const slide = isValid(decks, live.slide) ? live.slide : null
+  const outputsOff = Array.isArray(raw.outputsOff) ? raw.outputsOff.filter((id): id is string => typeof id === 'string') : []
   return pruneInstant({
+    isBlack: raw.isBlack === true,
+    outputsOff,
+    backgroundPickedFor: typeof raw.backgroundPickedFor === 'string' && raw.backgroundPickedFor === slide?.itemId ? raw.backgroundPickedFor : null,
     instant: cleanInstant(raw.instant),
     stage: sanitizeStage(raw.stage),
     serviceId: pick(library.services, raw.serviceId ?? null),

@@ -33,6 +33,12 @@ export type InstantSource =
   | { type: 'scripture'; ref: PassageRef; translations: string[]; versesPerSlide: number }
 
 export interface EngineState {
+  /** Black screen: the audience screens show nothing until it is lifted or a slide is shown; the layers underneath are kept. */
+  isBlack: boolean
+  /** Outputs switched off by the operator; they show nothing while their window stays where it is. */
+  outputsOff: string[]
+  /** The item that was live when the operator picked the live background; for that item the pick beats its own and its theme's. */
+  backgroundPickedFor: Id | null
   /** Sources of what Preview and Live show from the library, by their deck's item id; only those still referenced are kept. */
   instant: Record<Id, InstantSource>
   stage: StageState
@@ -50,12 +56,19 @@ export type Command =
   /** Shows a slide of a song or passage that need not be in the service, in Preview or straight to Live. */
   | { type: 'instant.show'; source: InstantSource; index: number; isLive: boolean }
   | { type: 'live.take' }
+  /** Shows a service slide now, without passing through Preview. */
+  | { type: 'live.show'; ref: SlideRef }
   | { type: 'live.next' }
   | { type: 'live.previous' }
   | { type: 'layer.clear'; layer: LayerKey }
   | { type: 'layer.clearAll' }
   | { type: 'background.set'; backgroundId: Id }
   | { type: 'lowerThird.set'; lowerThirdId: Id }
+  /** Creates or replaces a lower third in the library. */
+  | { type: 'lowerThird.save'; lowerThird: LowerThird }
+  | { type: 'lowerThird.delete'; lowerThirdId: Id }
+  | { type: 'screens.black'; isBlack: boolean }
+  | { type: 'output.power'; outputId: string; isOn: boolean }
   | { type: 'audio.set'; audioCueId: Id }
   /** Locks the operator window to volunteer controls; a PIN must be given the first time, to set it. */
   | { type: 'volunteer.lock'; pin?: string }
@@ -322,6 +335,10 @@ export const volunteerCommands = new Set<Command['type']>([
   'preview.set',
   'instant.show',
   'live.take',
+  'live.show',
+  'screens.black',
+  'output.power',
+  'lowerThird.set',
   'live.next',
   'live.previous',
   'layer.clear',
@@ -357,6 +374,8 @@ export interface OutputStatus {
   sentSeq: number
   ackedSeq: number
   isConnected: boolean
+  /** False while the operator has switched it off. */
+  isOn: boolean
 }
 
 export interface OperatorSnapshot {
@@ -381,6 +400,8 @@ export interface OperatorSnapshot {
   libraryRevision: number
   outputs: OutputStatus[]
   liveRender: RenderState
+  /** What the stage screen shows now, for its monitor in the operator window. */
+  stageRender: RenderState
   previewRender: RenderState
 }
 

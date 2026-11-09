@@ -54,6 +54,9 @@ describe('persistence', () => {
     const raw = { serviceId: 'sunday', preview: { itemId: 'gone', index: 0 }, live: { slide: { itemId: decks[0]!.itemId, index: 42 }, background: 'gone', audio: null, lowerThird: null } }
     await writeFile(path, JSON.stringify(raw))
     expect(await loadLiveState(path, starterLibrary)).toEqual({
+      isBlack: false,
+      outputsOff: [],
+      backgroundPickedFor: null,
       instant: {},
       stage: initialStage,
       serviceId: 'sunday',

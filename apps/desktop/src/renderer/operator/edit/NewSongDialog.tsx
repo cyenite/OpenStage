@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { newId, parseLyrics, sectionKinds } from '@openstage/shared'
 import { dispatch } from '../engine'
 import { commonLanguages } from './languages'
@@ -74,7 +74,7 @@ export function NewSongDialog({ onClose, onCreated }: NewSongDialogProps) {
                 const section = parsed.sections[index]!
                 const color = sectionKinds.find((k) => k.key === section.kind)?.color
                 return (
-                  <li key={position} style={{ borderColor: color }}>
+                  <li key={position} style={{ '--tint': color } as CSSProperties}>
                     <strong>{section.label}</strong>
                     <span>{section.slides.length === 1 ? '1 slide' : `${section.slides.length} slides`}</span>
                   </li>

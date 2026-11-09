@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   bibleBooks,
   bookById,
@@ -7,6 +7,7 @@ import {
   instantId,
   parseReference,
   type BookId,
+  type Id,
   type ChapterView,
   type InstantSource,
   type OperatorSnapshot,
@@ -20,6 +21,8 @@ import { useStoredState } from './useStoredState'
 interface BibleTabProps {
   snapshot: OperatorSnapshot
   target: AddTarget
+  focusRequest: number
+  onOpenDeck: (deckId: Id) => void
   onManage: () => void
 }
 
@@ -55,8 +58,10 @@ function verseAt(chapter: ChapterView, index: number): number | null {
   return found
 }
 
-/** A Bible reader in Present: pick a version, book and chapter, then click a verse for Preview or double-click for Live. */
-export function BibleTab({ snapshot, target, onManage }: BibleTabProps) {
+/** A Bible reader in Present: click a verse to open its chapter in the slide grid, double-click to show it now. */
+export function BibleTab({ snapshot, target, focusRequest, onOpenDeck, onManage }: BibleTabProps) {
+  const referenceField = useRef<HTMLInputElement>(null)
+  useEffect(() => referenceField.current?.focus(), [focusRequest])
   const [place, setPlace] = useStoredState<BiblePlace>('openstage.bible', { main: '', second: '', book: 'JHN', chapter: 3 }, isPlace)
   const [range, setRange] = useState<VerseRange | null>(null)
   const [reference, setReference] = useState('')
@@ -83,11 +88,13 @@ export function BibleTab({ snapshot, target, onManage }: BibleTabProps) {
     if (!row) return
     setRange({ from: verse, to: verse })
     dispatch({ type: 'instant.show', source: chapter!.source, index: row.slideIndex, isLive })
+    onOpenDeck(instantId(chapter!.source))
   }
   const showRange = (r: VerseRange, isLive: boolean) => {
     if (r.from === r.to) return showVerse(r.from, isLive)
     setRange(r)
     dispatch({ type: 'instant.show', source: rangeSource(r), index: 0, isLive })
+    onOpenDeck(instantId(rangeSource(r)))
   }
 
   // A typed reference to a single verse waits for its chapter to arrive before it can be shown.
@@ -106,7 +113,6 @@ export function BibleTab({ snapshot, target, onManage }: BibleTabProps) {
     const verse = verseAt(chapter!, ref.index)
     return verse === null ? null : { from: verse, to: verse }
   }
-  const previewShown = shown(state.preview)
   const liveShown = shown(state.live.slide)
   const isIn = (verse: number, r: VerseRange | null) => !!r && verse >= r.from && verse <= r.to
 
@@ -121,7 +127,9 @@ export function BibleTab({ snapshot, target, onManage }: BibleTabProps) {
     if (isRange) {
       const r = { from: ref.startVerse, to: ref.endVerse! }
       setRange(r)
-      dispatch({ type: 'instant.show', source: { type: 'scripture', ref: { ...ref, endChapter: ref.startChapter }, translations, versesPerSlide: Math.min(6, r.to - r.from + 1) }, index: 0, isLive })
+      const source: InstantSource = { type: 'scripture', ref: { ...ref, endChapter: ref.startChapter }, translations, versesPerSlide: Math.min(6, r.to - r.from + 1) }
+      dispatch({ type: 'instant.show', source, index: 0, isLive })
+      onOpenDeck(instantId(source))
     } else {
       setPending({ verse: ref.startVerse, isLive })
     }
@@ -173,20 +181,24 @@ export function BibleTab({ snapshot, target, onManage }: BibleTabProps) {
         <label className={`library-search${parsed && !parsed.ok ? ' is-invalid' : ''}`}>
           <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2z" /><path d="M4 19V5" /></svg>
           <input
+            ref={referenceField}
             type="text"
             value={reference}
             aria-label="Go to reference"
             placeholder="Reference: ps 23 4, jn 3 16-18"
             onChange={(e) => setReference(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') setReference('')
+              if (e.key === 'Escape' && reference) {
+                e.stopPropagation()
+                setReference('')
+              }
               if (e.key !== 'Enter') return
               e.preventDefault()
               goTo(e.shiftKey)
             }}
           />
         </label>
-        {parsed && <span className={`reference-hint${parsed.ok ? ' is-ok' : ''}`}>{parsed.ok ? `${formatReference(parsed.ref, language)} · Enter to preview, Shift Enter to go live` : parsed.error}</span>}
+        {parsed && <span className={`reference-hint${parsed.ok ? ' is-ok' : ''}`}>{parsed.ok ? `${formatReference(parsed.ref, language)} · Enter opens it, Shift Enter shows it now` : parsed.error}</span>}
         <div className="bible-pickers">
           <ul className="browser-list" aria-label="Books">
             {bibleBooks.map((b) => (
@@ -216,14 +228,14 @@ export function BibleTab({ snapshot, target, onManage }: BibleTabProps) {
           <strong>
             {bookName(place.book, language)} {place.chapter}
           </strong>
-          <span className="muted">{translations.join(' with ')} · click to preview · double-click to go live · Shift-click a range</span>
+          <span className="muted">{translations.join(' with ')} · click opens in the slide grid · double-click shows it now · Shift-click a range</span>
           {range && (
             <span className="library-detail-actions">
               <button
                 className="button-quiet button-small"
                 onClick={() => applyResult({ filter: 'scripture', key: title, ref: rangeRef(range), text: title, title, detail: '', snippet: '', translations }, target)}
               >
-                + Add {title} to schedule
+                + Add {title} to the service
               </button>
             </span>
           )}
@@ -232,11 +244,10 @@ export function BibleTab({ snapshot, target, onManage }: BibleTabProps) {
           {isCurrent &&
             chapter.verses.map((v) => {
               const isLive = isIn(v.verse, liveShown)
-              const isPreview = !isLive && isIn(v.verse, previewShown)
               return (
                 <li key={v.verse}>
                   <button
-                    className={`verse-item${isLive ? ' is-live' : isPreview ? ' is-preview' : ''}${second ? ' has-second' : ''}`}
+                    className={`verse-item${isLive ? ' is-live' : ''}${second ? ' has-second' : ''}`}
                     aria-label={`Verse ${v.verse}`}
                     aria-pressed={isIn(v.verse, range)}
                     onClick={(e) => (e.shiftKey && range ? showRange({ from: Math.min(range.from, v.verse), to: Math.max(range.from, v.verse) }, false) : showVerse(v.verse, false))}
@@ -245,7 +256,7 @@ export function BibleTab({ snapshot, target, onManage }: BibleTabProps) {
                     <span className="verse-number">{v.verse}</span>
                     <span className="verse-text">{v.main || <em className="muted">Not in {main}</em>}</span>
                     {second && <span className="verse-second">{v.secondary}</span>}
-                    <span className="verse-tag">{isLive ? 'LIVE' : isPreview ? 'PREVIEW' : ''}</span>
+                    <span className="verse-tag">{isLive ? 'LIVE' : ''}</span>
                   </button>
                 </li>
               )

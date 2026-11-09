@@ -1,11 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { Id, OperatorSnapshot, ServiceItem } from '@openstage/shared'
-import { ControlBar } from './components/ControlBar'
-import { MonitorPane } from './components/MonitorPane'
-import { PresentInspector } from './components/PresentInspector'
-import { ServiceOrder } from './components/ServiceOrder'
-import { SlideGrid } from './components/SlideGrid'
-import { Timeline } from './components/Timeline'
+import type { Id, ServiceItem } from '@openstage/shared'
+import { PresentWorkspace } from './components/PresentWorkspace'
 import { TitleBar } from './components/TitleBar'
 import { EditWorkspace, type EditSelection } from './edit/EditWorkspace'
 import { editLibraries } from './edit/LibraryTabs'
@@ -13,7 +8,6 @@ import { EditorSheet, type SheetDocument } from './library/EditorSheet'
 import { ImportDialog, type ImportSource } from './edit/ImportDialog'
 import { BibleVersions } from './library/BibleVersions'
 import { GetSongs } from './library/GetSongs'
-import { LibraryPanel } from './library/LibraryPanel'
 import { QuickAdd } from './library/QuickAdd'
 import type { AddTarget } from './library/results'
 import { initialPlanSelection, PlanWorkspace, type PlanSelection } from './plan/PlanWorkspace'
@@ -21,13 +15,14 @@ import { isMac, useAppearance, useWindowState, useWorkspace } from './chrome'
 import { useShortcuts } from './useShortcuts'
 import { VolunteerDialog } from './volunteer/PinDialogs'
 import { VolunteerScreen } from './volunteer/VolunteerScreen'
-import { dispatch, useSnapshot } from './engine'
+import { useSnapshot } from './engine'
 
 export function App() {
   const snapshot = useSnapshot()
   const windowState = useWindowState()
   const [workspace, setWorkspace] = useWorkspace()
-  const [appearance, setAppearance] = useAppearance()
+  const [appearance, setAppearance] = useAppearance(workspace === 'present')
+  const [libraryRequest, setLibraryRequest] = useState(0)
   const [isLocking, setLocking] = useState(false)
   const [addTarget, setAddTarget] = useState<AddTarget | null>(null)
   const [sheet, setSheet] = useState<SheetDocument | null>(null)
@@ -39,7 +34,7 @@ export function App() {
   const isLocked = !!snapshot?.mode.isLocked
   // Esc closes an overlay, and must never also clear the screens.
   const isOverlayOpen = !!addTarget || !!sheet || isManagingBibles || isGettingSongs || !!importSource
-  useShortcuts(isLocked || (workspace === 'present' && !isOverlayOpen) ? snapshot : null)
+  useShortcuts(isLocked || (workspace === 'present' && !isOverlayOpen) ? snapshot : null, { onLibrary: isLocked ? undefined : () => setLibraryRequest((n) => n + 1) })
 
   /** Adds after the selected item of the open service, or into another service from Plan. */
   const openQuickAdd = (target?: AddTarget) => {
@@ -102,6 +97,7 @@ export function App() {
           {workspace === 'present' && (
             <PresentWorkspace
               snapshot={snapshot}
+              libraryRequest={libraryRequest}
               onAdd={() => openQuickAdd()}
               onEdit={openEditor}
               onEditSong={(id) => setSheet({ kind: 'song', id })}
@@ -133,48 +129,6 @@ function ConnectingScreen() {
     <>
       <header className="titlebar titlebar-empty" />
       <div className="connecting">Connecting to the engine…</div>
-    </>
-  )
-}
-
-interface PresentWorkspaceProps {
-  snapshot: OperatorSnapshot
-  onAdd: () => void
-  onEdit: (item: ServiceItem) => void
-  onEditSong: (songId: Id) => void
-  onManageBibles: () => void
-  onGetSongs: () => void
-  onOpenSongs: () => void
-}
-
-function PresentWorkspace({ snapshot, onAdd, onEdit, onEditSong, onManageBibles, onGetSongs, onOpenSongs }: PresentWorkspaceProps) {
-  const { state, decks, instant } = snapshot
-  const sourceOf = (ref: typeof state.preview) => (!ref ? undefined : instant.some((d) => d.itemId === ref.itemId) ? 'Library' : 'Schedule')
-  const describe = (ref: typeof state.preview) => {
-    const deck = [...decks, ...instant].find((d) => d.itemId === ref?.itemId)
-    const slide = ref ? deck?.slides[ref.index] : undefined
-    return slide && ref ? `${deck!.title} · ${slide.label} · slide ${ref.index + 1}` : 'Nothing'
-  }
-  return (
-    <>
-      <ServiceOrder snapshot={snapshot} onAdd={onAdd} onEdit={onEdit} onOpenSongs={onOpenSongs} />
-      <main className="main">
-        <section className="monitors" aria-label="Preview and live">
-          <MonitorPane kind="preview" caption={describe(state.preview)} source={sourceOf(state.preview)} render={snapshot.previewRender} />
-          <MonitorPane
-            kind="live"
-            caption={describe(state.live.slide)}
-            source={sourceOf(state.live.slide)}
-            render={snapshot.liveRender}
-            onDropBackground={(backgroundId) => dispatch({ type: 'background.set', backgroundId })}
-          />
-        </section>
-        <ControlBar snapshot={snapshot} />
-        <SlideGrid snapshot={snapshot} />
-        <LibraryPanel snapshot={snapshot} onEditSong={onEditSong} onManageBibles={onManageBibles} onGetSongs={onGetSongs} />
-      </main>
-      <PresentInspector snapshot={snapshot} onEdit={onEdit} />
-      <Timeline snapshot={snapshot} />
     </>
   )
 }

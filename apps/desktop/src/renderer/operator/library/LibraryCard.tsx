@@ -30,8 +30,8 @@ export function LibraryCard({ result, label, hint, isActive, onAct, onLive }: Li
         {snippet ? <Snippet text={snippet} className="library-card-detail" /> : <span className="library-card-detail">{detail}</span>}
       </span>
       {onLive && (
-        <button className="button-quiet button-small" aria-label={`Show ${result.title} on the live screen now`} title="Show on the live screen now, without saving it" onClick={onLive}>
-          Live
+        <button className="button-quiet button-small" aria-label={`Show ${result.title} on the screen now`} title="Show on the screen now, until the next item, without saving it" onClick={onLive}>
+          Show now
         </button>
       )}
       <button className={`button-small${isActive ? ' button-quiet' : ' button-primary'}`} aria-label={hint} title={hint} onClick={onAct}>

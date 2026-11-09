@@ -15,9 +15,10 @@ export class OutputSurface {
   constructor(host: HTMLElement) {
     host.classList.add('os-host')
     this.stage = append(host, 'os-stage')
-    this.background = new LayerView(this.stage)
-    this.slide = new LayerView(this.stage)
-    this.lowerThird = new LayerView(this.stage)
+    // One fixed container per layer: a layer's new frame is appended inside its own container, never over the layers above it.
+    this.background = new LayerView(append(this.stage, 'os-layer-slot'))
+    this.slide = new LayerView(append(this.stage, 'os-layer-slot'))
+    this.lowerThird = new LayerView(append(this.stage, 'os-layer-slot'))
     this.stageView = new StageView(this.stage)
     void document.fonts?.ready.then(() => this.refit())
   }

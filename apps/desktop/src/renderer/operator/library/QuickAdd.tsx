@@ -41,7 +41,8 @@ export function QuickAdd({ snapshot, target, onClose }: QuickAddProps) {
   const choose = (result: LibraryResult | undefined, atEnd = false) => {
     if (!result) return
     applyResult(result, target, atEnd)
-    dialog.current?.close()
+    // Unmount now: a dialog's close event arrives a task later, and until then Ctrl/Cmd+K is ignored as if it were still open.
+    onClose()
   }
   const where = anchor?.type === 'slot' ? `fills ${target.afterTitle}` : anchor ? `after ${target.afterTitle}` : 'at the end'
 

@@ -7,6 +7,7 @@ import {
   type BackgroundRender,
   type HeadingKind,
   type Id,
+  type InstantSource,
   type ItemKind,
   type OperatorSnapshot,
   type PassageRef,
@@ -159,6 +160,12 @@ export function applyResult(result: LibraryResult, target: AddTarget, atEnd = fa
   }
   if (target.isOpen) dispatch({ type: 'item.select', itemId })
   return itemId
+}
+
+/** Adds a song or passage that was opened from the Library to the service, after the selected item. */
+export function addInstantToService(source: InstantSource, title: string, target: AddTarget): Id | null {
+  if (source.type === 'song') return applyResult({ filter: 'songs', key: source.songId, id: source.songId, title, detail: '', snippet: '' }, target)
+  return applyResult({ filter: 'scripture', key: title, ref: source.ref, text: title, title, detail: '', snippet: '', translations: source.translations }, target)
 }
 
 /** Drop with Alt for every item of the same kind, with Shift for the whole service. */

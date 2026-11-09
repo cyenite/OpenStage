@@ -25,5 +25,12 @@ export async function launch(userData: string) {
 
 export const mainText = (page: Page) => page.locator('.os-slide:last-child .os-box-main')
 
+/** The newest background frame; the previous one is still fading out underneath it. */
+export const background = (page: Page) => page.locator('.os-background').last()
+
+/** A slide in Present's grid, inside the deck with this title, since every deck numbers its slides from 0. */
+export const deckSlide = (page: Page, title: RegExp, index: number) =>
+  page.locator('.show-deck', { has: page.locator('.show-deck-head', { hasText: title }) }).getByTestId(`slide-${index}`)
+
 /** A service order item, looked up inside the sidebar so the inspector's "Up next" card never matches. */
 export const orderItem = (page: Page, name: RegExp) => page.getByRole('navigation', { name: 'Service order' }).getByRole('button', { name })

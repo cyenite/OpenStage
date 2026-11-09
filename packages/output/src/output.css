@@ -21,7 +21,8 @@
   container-type: size;
 }
 
-.os-layer {
+.os-layer,
+.os-layer-slot {
   position: absolute;
   inset: 0;
 }
