@@ -1,11 +1,15 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, nativeTheme, screen, type BrowserWindowConstructorOptions } from 'electron'
+import { pathToFileURL } from 'node:url'
+import { app, BrowserWindow, ipcMain, nativeTheme, net, protocol, screen, type BrowserWindowConstructorOptions } from 'electron'
 import { outputs, type OutputProfile } from '@openstage/engine'
 import { EngineHost } from './engine-host'
 
 if (process.env['OPENSTAGE_USER_DATA']) app.setPath('userData', process.env['OPENSTAGE_USER_DATA'])
 
 const engine = new EngineHost()
+
+// Images and videos in the library reach every window through this scheme; `stream` lets videos seek.
+protocol.registerSchemesAsPrivileged([{ scheme: 'openstage-media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }])
 const isMac = process.platform === 'darwin'
 const forceWindowedOutputs = process.env['OPENSTAGE_WINDOWED_OUTPUTS'] === '1'
 const titleBarColor = () => (nativeTheme.shouldUseDarkColors ? '#1C1C1F' : '#ECECEE')
@@ -103,12 +107,23 @@ function createOutputWindow(profile: OutputProfile, index: number): BrowserWindo
   return window
 }
 
+/** Serves only plain file names from the media folder, so a page can never ask for a path outside it. */
+function serveMedia(): void {
+  const folder = join(app.getPath('userData'), 'library', 'media-files')
+  protocol.handle('openstage-media', (request) => {
+    const name = decodeURIComponent(new URL(request.url).pathname.slice(1))
+    if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,200}$/.test(name) || name.includes('..')) return new Response('Not found', { status: 404 })
+    return net.fetch(pathToFileURL(join(folder, name)).toString(), { headers: request.headers })
+  })
+}
+
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   let isQuitting = false
 
   app.whenReady().then(() => {
+    serveMedia()
     engine.start()
     handleWindowRequests()
     const operator = createOperatorWindow()

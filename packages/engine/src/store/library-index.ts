@@ -9,6 +9,8 @@ import {
   type Library,
   type SearchHit,
   type Song,
+  pageText,
+  overlayKinds,
 } from '@openstage/shared'
 import type { UsageEntry } from './usage-log'
 
@@ -42,6 +44,9 @@ const describe: { [K in DocumentKind]: (document: DocumentTypes[K]) => Described
   lowerThirds: (lowerThird) => ({ title: lowerThird.title, detail: lowerThird.subtitle, body: [lowerThird.subtitle] }),
   audioCues: (cue) => ({ title: cue.name, detail: '', body: [] }),
   templates: (template) => ({ title: template.name, detail: `${template.slots.length} items`, body: template.slots.map((s) => s.title) }),
+  presentations: (deck) => ({ title: deck.title, detail: `${deck.pages.length} ${deck.pages.length === 1 ? 'page' : 'pages'}`, body: deck.pages.flatMap((p) => [p.name, ...pageText(p)]) }),
+  overlays: (overlay) => ({ title: overlay.name, detail: overlayKinds.find((k) => k.key === overlay.kind)?.label ?? '', body: overlay.kind === 'ticker' ? [overlay.text] : overlay.kind === 'banner' ? [overlay.title, overlay.subtitle] : [] }),
+  media: (item) => ({ title: item.name, detail: item.type === 'video' ? 'Video' : 'Image', body: [] }),
   themes: (theme) => ({ title: theme.name, detail: theme.fill ? 'Own background' : 'Over the background layer', body: [] }),
 }
 

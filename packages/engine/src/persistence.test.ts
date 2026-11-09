@@ -35,7 +35,7 @@ describe('persistence', () => {
     const path = join(await tempDir(), 'live-state.json')
     const state: EngineState = {
       ...initialState(decks, 'candle', 'sunday'),
-      live: { slide: { itemId: decks[0]!.itemId, index: 3 }, audio: 'walk-in', background: 'candle', lowerThird: 'pastor' },
+      live: { slide: { itemId: decks[0]!.itemId, index: 3 }, audio: 'walk-in', background: 'candle', lowerThird: 'pastor', media: null, overlays: [] },
     }
     const saver = new CoalescingWriter<EngineState>(
       (value) => atomicWriteJson(path, value),
@@ -51,19 +51,20 @@ describe('persistence', () => {
 
   it('drops references to content that no longer exists', async () => {
     const path = join(await tempDir(), 'live-state.json')
-    const raw = { serviceId: 'sunday', preview: { itemId: 'gone', index: 0 }, live: { slide: { itemId: decks[0]!.itemId, index: 42 }, background: 'gone', audio: null, lowerThird: null } }
+    const raw = { serviceId: 'sunday', preview: { itemId: 'gone', index: 0 }, live: { slide: { itemId: decks[0]!.itemId, index: 42 }, background: 'gone', audio: null, lowerThird: null, media: null, overlays: [] } }
     await writeFile(path, JSON.stringify(raw))
     expect(await loadLiveState(path, starterLibrary)).toEqual({
       isBlack: false,
       outputsOff: [],
       backgroundPickedFor: null,
+      playback: null,
       instant: {},
       stage: initialStage,
       serviceId: 'sunday',
       timing: { itemId: null, itemStartedAt: null, serviceStartedAt: null },
       preview: null,
       selectedItemId: null,
-      live: { slide: null, audio: null, background: null, lowerThird: null },
+      live: { slide: null, audio: null, background: null, lowerThird: null, media: null, overlays: [] },
     })
   })
 

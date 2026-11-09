@@ -1,7 +1,7 @@
 import { itemKinds, type Id, type ItemKind, type Service, type ServiceItem, type ServiceTemplate, type TemplateSlot } from './library'
 
 export function itemKind(item: ServiceItem): ItemKind {
-  return item.type === 'song' || item.type === 'scripture' ? item.type : item.kind
+  return item.type === 'song' || item.type === 'scripture' || item.type === 'presentation' ? item.type : item.kind
 }
 
 export function itemMinutes(item: ServiceItem): number {
@@ -15,7 +15,8 @@ export function itemFromSlot(slot: TemplateSlot, itemId: Id, arrangementId: (son
   if (slot.kind === 'song' && slot.songId && arrangement) return { ...base, type: 'song', songId: slot.songId, arrangementId: arrangement }
   if (slot.kind === 'scripture' && slot.passageId) return { ...base, type: 'scripture', passageId: slot.passageId }
   if (slot.kind === 'song' || slot.kind === 'scripture') return { ...base, type: 'slot', kind: slot.kind, title: slot.title, rule: slot.rule }
-  return { ...base, type: 'heading', kind: slot.kind, title: slot.title }
+  // Slides have no slot of their own yet; a template slot for them starts as a part to fill by hand.
+  return { ...base, type: 'heading', kind: slot.kind === 'presentation' ? 'other' : slot.kind, title: slot.title }
 }
 
 export interface NewService {

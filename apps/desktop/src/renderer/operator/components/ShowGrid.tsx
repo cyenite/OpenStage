@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { classicTheme, fontCss, itemKinds, lookup, sectionKinds, type Background, type Deck, type DeckSlide, type Id, type OperatorSnapshot, type ServiceItem, type Theme } from '@openstage/shared'
+import { classicTheme, fontCss, itemKinds, lookup, sectionKinds, type Background, type Deck, type MediaItem, type PageRender, type RenderState, type DeckSlide, type Id, type OperatorSnapshot, type ServiceItem, type Theme } from '@openstage/shared'
 import { ItemSettings } from '../library/ItemSettings'
 import { addInstantToService, swatchCss, type AddTarget } from '../library/results'
 import { jumpDeck, jumpTarget, sectionJumps, showNow } from './jumps'
+import { RenderView } from './RenderView'
 
 interface ShowGridProps {
   snapshot: OperatorSnapshot
@@ -12,10 +13,11 @@ interface ShowGridProps {
   onCloseLibrary: () => void
   onEdit: (item: ServiceItem) => void
   onEditSong: (songId: Id) => void
+  onEditSlides: (presentationId: Id) => void
 }
 
 /** Present's centre: every slide, one click to put it on screen. Only what is on screen is marked. */
-export function ShowGrid({ snapshot, libraryDeckId, target, onCloseLibrary, onEdit, onEditSong }: ShowGridProps) {
+export function ShowGrid({ snapshot, libraryDeckId, target, onCloseLibrary, onEdit, onEditSong, onEditSlides }: ShowGridProps) {
   const { state, decks, instant, service } = snapshot
   const libraryDeck = instant.find((d) => d.itemId === libraryDeckId)
   const shown = libraryDeck ? [libraryDeck] : decks
@@ -34,7 +36,7 @@ export function ShowGrid({ snapshot, libraryDeckId, target, onCloseLibrary, onEd
   return (
     <section className="show" aria-label="Slides">
       {libraryDeck ? (
-        <LibraryHead deck={libraryDeck} snapshot={snapshot} target={target} onClose={onCloseLibrary} onEditSong={onEditSong} />
+        <LibraryHead deck={libraryDeck} snapshot={snapshot} target={target} onClose={onCloseLibrary} onEditSong={onEditSong} onEditSlides={onEditSlides} />
       ) : (
         <ServiceHead snapshot={snapshot} onEdit={onEdit} />
       )}
@@ -79,9 +81,10 @@ interface LibraryHeadProps {
   target: AddTarget
   onClose: () => void
   onEditSong: (songId: Id) => void
+  onEditSlides: (presentationId: Id) => void
 }
 
-function LibraryHead({ deck, snapshot, target, onClose, onEditSong }: LibraryHeadProps) {
+function LibraryHead({ deck, snapshot, target, onClose, onEditSong, onEditSlides }: LibraryHeadProps) {
   const source = snapshot.state.instant[deck.itemId]
   return (
     <div className="show-head is-library">
@@ -94,6 +97,11 @@ function LibraryHead({ deck, snapshot, target, onClose, onEditSong }: LibraryHea
       {source?.type === 'song' && (
         <button className="button-quiet button-small" onClick={() => onEditSong(source.songId)}>
           Edit lyrics
+        </button>
+      )}
+      {source?.type === 'presentation' && (
+        <button className="button-quiet button-small" onClick={() => onEditSlides(source.presentationId)}>
+          Edit slides
         </button>
       )}
       {source && (
@@ -163,6 +171,7 @@ function DeckSlides({ deck, snapshot }: { deck: Deck; snapshot: OperatorSnapshot
               slide={slide}
               theme={theme}
               background={background}
+              media={library.media}
               isLive={index === liveIndex}
               onShow={() => showNow(snapshot, { itemId: deck.itemId, index })}
             />
@@ -178,11 +187,12 @@ interface SlideCardProps {
   slide: DeckSlide
   theme: Theme
   background: Background | undefined
+  media: MediaItem[]
   isLive: boolean
   onShow: () => void
 }
 
-function SlideCard({ index, slide, theme, background, isLive, onShow }: SlideCardProps) {
+function SlideCard({ index, slide, theme, background, media, isLive, onShow }: SlideCardProps) {
   const tint = sectionKinds.find((k) => k.key === slide.kind)?.color
   return (
     <button
@@ -193,9 +203,13 @@ function SlideCard({ index, slide, theme, background, isLive, onShow }: SlideCar
       aria-current={isLive ? 'true' : undefined}
       data-testid={`slide-${index}`}
     >
-      <span className="show-card-text" style={thumbnailStyle(theme, background)}>
-        {slide.lines.join('\n')}
-      </span>
+      {slide.page ? (
+        <RenderView key={JSON.stringify(slide.page)} className="show-card-page" isStatic render={pageThumb(slide.page)} />
+      ) : (
+        <span className="show-card-text" style={thumbnailStyle(theme, background)}>
+          {slide.lines.join('\n')}
+        </span>
+      )}
       <span className="show-card-foot">
         <span className="show-card-dot" aria-hidden="true" />
         <span className="show-card-label">{slide.label}</span>
@@ -215,4 +229,8 @@ function thumbnailStyle(theme: Theme, background: Background | undefined): CSSPr
     fontFamily: fontCss(boxes.main.font.family),
     fontStyle: boxes.main.font.italic ? 'italic' : 'normal',
   }
+}
+
+function pageThumb(page: PageRender): RenderState {
+  return { seq: 0, aspect: 16 / 9, outputId: 'projector', transitionMs: 0, background: null, slide: { key: 'thumb', fill: null, boxes: [], page }, lowerThird: null, media: null, overlays: [], stage: null }
 }

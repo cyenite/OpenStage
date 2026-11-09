@@ -1,4 +1,5 @@
 import type { BackgroundRender } from './render'
+import type { MediaItem, Overlay, PageRender, Presentation } from './slides'
 import type { PassageRef } from './scripture'
 import type { Theme } from './themes'
 
@@ -91,6 +92,7 @@ export type ServiceItem = ItemBase &
   (
     | { type: 'song'; songId: Id; arrangementId: Id; languages?: string[] }
     | { type: 'scripture'; passageId: Id }
+    | { type: 'presentation'; presentationId: Id }
     /** A part of the service with no slides of its own yet: sermon, announcements, prayer. */
     | { type: 'heading'; kind: HeadingKind; title: string }
     /** A template placeholder still waiting for its song or passage. */
@@ -144,6 +146,7 @@ export interface ServiceTemplate {
 export const itemKinds = [
   { key: 'song', label: 'Song', badge: 'SG', minutes: 5 },
   { key: 'scripture', label: 'Scripture', badge: 'BK', minutes: 4 },
+  { key: 'presentation', label: 'Slides', badge: 'SL', minutes: 3 },
   { key: 'welcome', label: 'Welcome', badge: 'WL', minutes: 5 },
   { key: 'announcements', label: 'Announcements', badge: 'AN', minutes: 6 },
   { key: 'prayer', label: 'Prayer', badge: 'PR', minutes: 5 },
@@ -154,7 +157,7 @@ export const itemKinds = [
 ] as const
 
 export type ItemKind = (typeof itemKinds)[number]['key']
-export type HeadingKind = Exclude<ItemKind, 'song' | 'scripture'>
+export type HeadingKind = Exclude<ItemKind, 'song' | 'scripture' | 'presentation'>
 
 export interface Background {
   id: Id
@@ -183,6 +186,9 @@ export interface DocumentTypes {
   audioCues: AudioCue
   themes: Theme
   templates: ServiceTemplate
+  presentations: Presentation
+  overlays: Overlay
+  media: MediaItem
 }
 
 export type DocumentKind = keyof DocumentTypes
@@ -196,6 +202,9 @@ export const documentKinds = {
   audioCues: { label: 'Audio cues' },
   themes: { label: 'Themes' },
   templates: { label: 'Service templates' },
+  presentations: { label: 'Slides' },
+  overlays: { label: 'Overlays' },
+  media: { label: 'Media' },
 } as const satisfies Record<DocumentKind, { label: string }>
 
 export const documentKindKeys = Object.keys(documentKinds) as DocumentKind[]
@@ -227,6 +236,8 @@ export interface Deck {
   themeId: Id | null
   /** The item's own background; may point nowhere, and then the theme's fill is used. */
   backgroundId: Id | null
+  /** Slides decks that start again after their last page. */
+  isLooping?: boolean
   title: string
   subtitle: string
   slides: DeckSlide[]
@@ -240,4 +251,8 @@ export interface DeckSlide {
   lines: string[]
   secondaryLines: string[]
   reference: string
+  /** A designed page from a slides deck, drawn instead of the theme's text boxes. */
+  page?: PageRender
+  /** Seconds after which a page moves on by itself. */
+  advanceAfter?: number | null
 }

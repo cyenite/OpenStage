@@ -9,11 +9,16 @@ import { SongEditor } from './SongEditor'
 import { SongLibrary } from './SongLibrary'
 import { ThemeEditor } from './ThemeEditor'
 import { ThemeLibrary } from './ThemeLibrary'
+import { MediaDetail, MediaLibrary } from '../slides/MediaLibrary'
+import { SlideEditor } from '../slides/SlideEditor'
+import { SlidesLibrary } from '../slides/SlidesLibrary'
 
 export interface EditSelection {
   songId: Id | null
   themeId: Id | null
   passageId: Id | null
+  presentationId: Id | null
+  mediaId: Id | null
   library: EditLibrary
 }
 
@@ -64,6 +69,48 @@ export function EditWorkspace({ snapshot, selection, onSelection, onGetSongs }: 
           )}
         </main>
         {importDialog}
+      </>
+    )
+  }
+
+  if (selection.library === 'slides') {
+    return (
+      <>
+        <SlidesLibrary
+          service={snapshot.service}
+          revision={snapshot.libraryRevision}
+          selectedId={selection.presentationId}
+          onLibrary={(library) => select({ library })}
+          onSelect={(presentationId) => select({ presentationId })}
+        />
+        <main className="main editor-main slides-main">
+          {selection.presentationId ? (
+            <SlideEditor key={selection.presentationId} snapshot={snapshot} presentationId={selection.presentationId} onDeleted={() => select({ presentationId: null })} />
+          ) : (
+            <div className="editor-empty">
+              <h1>Slides</h1>
+              <p>Design pages for announcements, a countdown, giving or a sermon outline: text, clocks, QR codes, shapes, images, videos and scrolling messages over animated or video backgrounds. Make new slides, or open the Welcome loop on the left.</p>
+            </div>
+          )}
+        </main>
+      </>
+    )
+  }
+
+  if (selection.library === 'media') {
+    return (
+      <>
+        <MediaLibrary media={snapshot.library.media} selectedId={selection.mediaId} onLibrary={(library) => select({ library })} onSelect={(mediaId) => select({ mediaId })} />
+        <main className="main editor-main">
+          {selection.mediaId ? (
+            <MediaDetail key={selection.mediaId} snapshot={snapshot} mediaId={selection.mediaId} onDeleted={() => select({ mediaId: null })} />
+          ) : (
+            <div className="editor-empty">
+              <h1>Media</h1>
+              <p>Images and videos for page backgrounds, watermarks and full-screen playback. Add files with the button on the left or drop them there.</p>
+            </div>
+          )}
+        </main>
       </>
     )
   }

@@ -30,7 +30,7 @@ export function ItemSettings({ snapshot, item, onEdit, onClose }: ItemSettingsPr
   const title = deck.title
   const outline = item.type === 'song' ? outlines.find((o) => o.id === item.songId) : undefined
   const update = (changes: ItemChanges) => dispatch({ type: 'service.edit', serviceId: service.id, edit: { type: 'service.updateItem', itemId: item.id, changes } })
-  const canEdit = item.type === 'song' || item.type === 'scripture'
+  const canEdit = item.type === 'song' || item.type === 'scripture' || item.type === 'presentation'
 
   return (
     <div
@@ -83,7 +83,7 @@ export function ItemSettings({ snapshot, item, onEdit, onClose }: ItemSettingsPr
       )}
       {canEdit && (
         <button className="button-quiet" onClick={() => (onClose(), onEdit(item))}>
-          {item.type === 'song' ? 'Edit lyrics' : 'Change passage'}
+          {item.type === 'song' ? 'Edit lyrics' : item.type === 'presentation' ? 'Edit slides' : 'Change passage'}
         </button>
       )}
     </div>

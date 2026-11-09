@@ -1,3 +1,4 @@
+import type { MediaRender, OverlayRender, PageRender } from './slides'
 import type { StageRender } from './stage'
 
 export interface Rect01 {
@@ -40,6 +41,8 @@ export interface SlideRender {
   /** The theme's own background, drawn on the slide layer under the text; null lets the background layer show. */
   fill: BackgroundRender | null
   boxes: TextBoxRender[]
+  /** A designed page, drawn instead of the boxes. */
+  page?: PageRender
 }
 
 export interface LowerThirdRender {
@@ -62,4 +65,7 @@ export interface RenderState {
   slide: SlideRender | null
   lowerThird: LowerThirdRender | null
   background: BackgroundRender | null
+  media: MediaRender | null
+  /** Bottom first. */
+  overlays: OverlayRender[]
 }

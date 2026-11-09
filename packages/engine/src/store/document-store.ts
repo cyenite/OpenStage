@@ -86,6 +86,8 @@ export class DocumentStore {
 
   async saveAll(library: Library, kinds: DocumentKind[] = documentKindKeys): Promise<void> {
     for (const kind of kinds) {
+      // A kind that starts empty (media) still gets its folder, or it would count as missing on every start.
+      await mkdir(join(this.root, kind), { recursive: true })
       for (const document of Object.values(library[kind])) this.save(kind, document)
     }
     await this.flush()

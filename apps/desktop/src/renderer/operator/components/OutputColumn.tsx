@@ -3,12 +3,15 @@ import { classicTheme, layers, lookup, type Layer, type LayerKey, type OperatorS
 import { dispatch } from '../engine'
 import { useStoredState } from '../library/useStoredState'
 import { LowerThirdsPanel } from './LowerThirdsPanel'
+import { OverlaysPanel } from './OverlaysPanel'
+import { formatSeconds } from '../library/media'
 import { RenderView } from './RenderView'
 import { StageLayout, StageMessage, Timers } from './StagePanels'
 
 /** Declaration order is tab order. */
 const outputTabs = [
   { key: 'lowerThirds', label: 'Lower thirds' },
+  { key: 'overlays', label: 'Overlays' },
   { key: 'timer', label: 'Timer' },
   { key: 'stage', label: 'Stage' },
 ] as const
@@ -41,6 +44,7 @@ export function OutputColumn({ snapshot }: { snapshot: OperatorSnapshot }) {
           onPreview={(isPreviewing) => setPreviews({ ...previews, [output.id]: isPreviewing })}
         />
       ))}
+      <MediaControls snapshot={snapshot} now={now} />
       <LayerList snapshot={snapshot} />
       <BlackButton isBlack={snapshot.state.isBlack} />
       <div className="output-tabs">
@@ -53,6 +57,7 @@ export function OutputColumn({ snapshot }: { snapshot: OperatorSnapshot }) {
         </div>
         <div role="tabpanel" className="output-tab-body">
           {tab === 'lowerThirds' && <LowerThirdsPanel snapshot={snapshot} />}
+          {tab === 'overlays' && <OverlaysPanel snapshot={snapshot} />}
           {tab === 'timer' && <Timers snapshot={snapshot} now={now} />}
           {tab === 'stage' && (
             <>
@@ -197,5 +202,38 @@ function layerValues(snapshot: OperatorSnapshot): Record<LayerKey, { text: strin
     slide: slide ? { text: `${deck!.title} · ${slide.label}`, canClear: true } : null,
     lowerThird: lowerThird ? { text: lowerThird.title, canClear: true } : null,
     audio: audio ? { text: audio.name, canClear: true } : null,
+    media: named(library.media, live.media) ? { text: `${named(library.media, live.media)!.name}${state.playback?.isPaused ? ' · paused' : ''}`, canClear: true } : null,
+    overlays: live.overlays.length > 0 ? { text: live.overlays.map((id) => named(library.overlays, id)?.name ?? id).join(', '), canClear: true } : null,
   }
+}
+
+/** Shown while the media layer has something: where the video is, and play, pause, restart and stop. */
+function MediaControls({ snapshot, now }: { snapshot: OperatorSnapshot; now: number }) {
+  const { playback, live } = snapshot.state
+  const item = snapshot.library.media.find((m) => m.id === live.media)
+  if (!item || !playback) return null
+  const position = playback.position + (playback.isPaused ? 0 : (now - playback.at) / 1000)
+  const end = item.endAt ?? item.duration
+  const shown = item.ending === 'loop' && end ? item.startAt + ((position - item.startAt) % Math.max(0.1, end - item.startAt)) : end ? Math.min(position, end) : position
+  return (
+    <section className="media-controls" aria-label="Media playing">
+      <span className="media-controls-name">
+        <strong>{item.name}</strong>
+        <span className="muted">{item.type === 'video' ? `${formatSeconds(shown)}${end ? ` / ${formatSeconds(end)}` : ''}${playback.isPaused ? ' · paused' : ''}` : 'Image'}</span>
+      </span>
+      {item.type === 'video' && (
+        <>
+          <button className="button-quiet button-small" onClick={() => dispatch({ type: 'media.control', action: playback.isPaused ? 'play' : 'pause' })}>
+            {playback.isPaused ? 'Play' : 'Pause'}
+          </button>
+          <button className="button-quiet button-small" onClick={() => dispatch({ type: 'media.control', action: 'restart' })}>
+            Restart
+          </button>
+        </>
+      )}
+      <button className="button-quiet button-small" aria-label="Stop the media (F5)" onClick={() => dispatch({ type: 'layer.clear', layer: 'media' })}>
+        Stop
+      </button>
+    </section>
+  )
 }

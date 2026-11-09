@@ -1,7 +1,7 @@
-import { initialStage, instantId, isInstantId, stageLayouts, type Command, type Deck, type EngineState, type Id, type Library, type LiveLayers, type SlideRef, type StageState, type Timing } from '@openstage/shared'
+import { initialStage, instantId, isInstantId, stageLayouts, type Command, type Deck, type EngineState, type Id, type Library, type LiveLayers, type Playback, type SlideRef, type StageState, type Timing } from '@openstage/shared'
 import { cleanInstant, pruneInstant } from './instant'
 
-export const emptyLive: LiveLayers = { slide: null, audio: null, background: null, lowerThird: null }
+export const emptyLive: LiveLayers = { slide: null, audio: null, background: null, lowerThird: null, media: null, overlays: [] }
 
 export const noTiming: Timing = { itemId: null, itemStartedAt: null, serviceStartedAt: null }
 
@@ -11,6 +11,7 @@ export function initialState(decks: Deck[], defaultBackgroundId: Id | null, serv
     isBlack: false,
     outputsOff: [],
     backgroundPickedFor: null,
+    playback: null,
     instant: {},
     stage: initialStage,
     serviceId,
@@ -52,9 +53,11 @@ export function reduce(state: EngineState, command: Command, decks: Deck[]): Eng
       return previous ? goLive(state, previous, decks) : state
     }
     case 'layer.clear':
+      if (command.layer === 'overlays') return { ...state, live: { ...state.live, overlays: [] } }
+      if (command.layer === 'media') return { ...state, playback: null, live: { ...state.live, media: null } }
       return { ...state, live: { ...state.live, [command.layer]: null } }
     case 'layer.clearAll':
-      return { ...state, isBlack: false, live: emptyLive }
+      return { ...state, isBlack: false, playback: null, live: emptyLive }
     case 'background.set':
       return { ...state, isBlack: false, backgroundPickedFor: state.live.slide?.itemId ?? null, live: { ...state.live, background: command.backgroundId } }
     case 'lowerThird.set':
@@ -96,6 +99,7 @@ function step(decks: Deck[], ref: SlideRef, delta: 1 | -1): SlideRef | null {
   if (!deck) return null
   const index = ref.index + delta
   if (index >= 0 && index < deck.slides.length) return { itemId: deck.itemId, index }
+  if (deck.isLooping && deck.slides.length > 0) return { itemId: deck.itemId, index: (index + deck.slides.length) % deck.slides.length }
   // A library deck ends where it ends; the service never runs on into it, or out of it.
   if (delta < 0 || isInstantId(deck.itemId)) return null
   const following = decks.slice(deckIndex + 1).find((d) => d.slides.length > 0 && !isInstantId(d.itemId))
@@ -110,6 +114,7 @@ export function sanitize(raw: Partial<EngineState>, decks: Deck[], library: Libr
   const isTimed = decks.some((d) => d.itemId === timing.itemId) && typeof timing.itemStartedAt === 'number'
   const preview = isValid(decks, raw.preview ?? null) ? raw.preview! : null
   const slide = isValid(decks, live.slide) ? live.slide : null
+  const media = pick(library.media, live.media)
   const outputsOff = Array.isArray(raw.outputsOff) ? raw.outputsOff.filter((id): id is string => typeof id === 'string') : []
   return pruneInstant({
     isBlack: raw.isBlack === true,
@@ -121,11 +126,14 @@ export function sanitize(raw: Partial<EngineState>, decks: Deck[], library: Libr
     timing: isTimed ? timing : { ...noTiming, serviceStartedAt: typeof timing.serviceStartedAt === 'number' ? timing.serviceStartedAt : null },
     preview,
     selectedItemId: decks.some((d) => d.itemId === raw.selectedItemId && !isInstantId(d.itemId)) ? raw.selectedItemId! : null,
+    playback: media && isPlayback(raw.playback) ? raw.playback : null,
     live: {
       slide,
       audio: pick(library.audioCues, live.audio),
       background: pick(library.backgrounds, live.background),
       lowerThird: pick(library.lowerThirds, live.lowerThird),
+      media,
+      overlays: Array.isArray(live.overlays) ? [...new Set(live.overlays.filter((id) => typeof id === 'string' && Object.hasOwn(library.overlays, id)))] : [],
     },
   })
 }
@@ -147,4 +155,10 @@ export function isValid(decks: Deck[], ref: SlideRef | null): ref is SlideRef {
   if (!ref) return false
   const deck = decks.find((d) => d.itemId === ref.itemId)
   return !!deck && Number.isInteger(ref.index) && ref.index >= 0 && ref.index < deck.slides.length
+}
+
+function isPlayback(raw: unknown): raw is Playback {
+  const p = raw as Partial<Playback> | null
+  const isNumber = (n: unknown) => typeof n === 'number' && Number.isFinite(n)
+  return !!p && isNumber(p.startedAt) && isNumber(p.position) && isNumber(p.at) && typeof p.isPaused === 'boolean'
 }

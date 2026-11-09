@@ -41,6 +41,7 @@ folder.
 | ↑ / ↓ | Select the previous / next service item (the screens do not change) |
 | C, 1-9, B, P, E, T, I | Jump to the chorus, verse n, bridge, pre-chorus, ending, tag or intro of the song on screen |
 | F1, F2, F3, F4 | Clear the background pick, slides, lower third, audio |
+| F5, F6 | Stop the media layer, take every overlay off |
 | Esc | Black screen; press again to bring back what was there |
 | / or Ctrl+L (Cmd+L) | Open the Library drawer with its search focused |
 

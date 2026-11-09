@@ -13,7 +13,9 @@ export function instantId(source: InstantSource): Id {
   const parts =
     source.type === 'song'
       ? [source.type, source.songId, source.arrangementId ?? '']
-      : [source.type, source.ref.book, source.ref.startChapter, source.ref.startVerse, source.ref.endChapter, source.ref.endVerse, ...source.translations, source.versesPerSlide]
+      : source.type === 'presentation'
+        ? [source.type, source.presentationId]
+        : [source.type, source.ref.book, source.ref.startChapter, source.ref.startVerse, source.ref.endChapter, source.ref.endVerse, ...source.translations, source.versesPerSlide]
   const text = JSON.stringify(parts)
   let hash = 0x811c9dc5
   for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193)

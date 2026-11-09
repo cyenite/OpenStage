@@ -48,6 +48,7 @@ export function ServicePlan({ serviceId, snapshot, onBack, onQuickAdd, onPresent
   const titleOf = (item: ServiceItem) => {
     if (item.type === 'heading' || item.type === 'slot') return item.title
     if (item.type === 'song') return outlines.find((o) => o.id === item.songId)?.title ?? songs.find((s) => s.id === item.songId)?.title ?? 'Missing song'
+    if (item.type === 'presentation') return 'Slides'
     return passages.find((p) => p.id === item.passageId)?.title ?? 'Missing passage'
   }
   const quickAdd = (afterItemId: string | null) => {

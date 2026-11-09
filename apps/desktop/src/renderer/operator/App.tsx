@@ -30,7 +30,7 @@ export function App() {
   const [isGettingSongs, setGettingSongs] = useState(false)
   const [importSource, setImportSource] = useState<ImportSource | null>(null)
   const [planSelection, setPlanSelection] = useState<PlanSelection>(initialPlanSelection)
-  const [editSelection, setEditSelection] = useState<EditSelection>({ library: 'songs', songId: null, themeId: null, passageId: null })
+  const [editSelection, setEditSelection] = useState<EditSelection>({ library: 'songs', songId: null, themeId: null, passageId: null, presentationId: null, mediaId: null })
   const isLocked = !!snapshot?.mode.isLocked
   // Esc closes an overlay, and must never also clear the screens.
   const isOverlayOpen = !!addTarget || !!sheet || isManagingBibles || isGettingSongs || !!importSource
@@ -43,7 +43,16 @@ export function App() {
     const afterItemId = state.selectedItemId
     setAddTarget(target ?? { service, afterItemId, afterTitle: decks.find((d) => d.itemId === afterItemId)?.title ?? '', isOpen: true })
   }
+  const openSlides = (presentationId: Id | null) => {
+    setEditSelection((selection) => ({ ...selection, library: 'slides', presentationId: presentationId ?? selection.presentationId }))
+    setWorkspace('edit')
+  }
+  const openMedia = (mediaId: Id | null) => {
+    setEditSelection((selection) => ({ ...selection, library: 'media', mediaId: mediaId ?? selection.mediaId }))
+    setWorkspace('edit')
+  }
   const openEditor = (item: ServiceItem) => {
+    if (item.type === 'presentation') openSlides(item.presentationId)
     if (item.type === 'song') setSheet({ kind: 'song', id: item.songId })
     if (item.type === 'scripture') setSheet({ kind: 'passage', id: item.passageId })
   }
@@ -104,6 +113,8 @@ export function App() {
               onManageBibles={() => setManagingBibles(true)}
               onGetSongs={() => setGettingSongs(true)}
               onOpenSongs={() => setWorkspace('edit')}
+              onEditSlides={openSlides}
+              onEditMedia={openMedia}
             />
           )}
           {workspace === 'edit' && <EditWorkspace snapshot={snapshot} selection={editSelection} onSelection={setEditSelection} onGetSongs={() => setGettingSongs(true)} />}

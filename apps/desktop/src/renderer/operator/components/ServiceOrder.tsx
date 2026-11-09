@@ -33,7 +33,7 @@ export function ServiceOrder({ snapshot, onAdd, onEdit, onOpenSongs }: ServiceOr
           const isDone = !isLive && index < lastLive
           const isSelected = state.selectedItemId === item.id
           const isDropTarget = dropItemId === item.id
-          const canEdit = item.type === 'song' || item.type === 'scripture'
+          const canEdit = item.type === 'song' || item.type === 'scripture' || item.type === 'presentation'
           return (
             <li
               key={item.id}

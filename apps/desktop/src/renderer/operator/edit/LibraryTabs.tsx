@@ -1,6 +1,8 @@
 export const editLibraries = [
   { key: 'songs', label: 'Songs' },
   { key: 'scripture', label: 'Scripture' },
+  { key: 'slides', label: 'Slides' },
+  { key: 'media', label: 'Media' },
   { key: 'themes', label: 'Themes' },
 ] as const
 

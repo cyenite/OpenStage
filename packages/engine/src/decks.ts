@@ -3,6 +3,9 @@ import {
   itemKind,
   itemMinutes,
   lookup,
+  mediaUrl,
+  pageRender,
+  pageText,
   passageSlides,
   versesFor,
   type BibleText,
@@ -11,6 +14,7 @@ import {
   type Id,
   type InstantSource,
   type Library,
+  type Presentation,
   type ScripturePassage,
   type Service,
   type ServiceItem,
@@ -30,6 +34,7 @@ export function buildInstantDecks(instant: Record<Id, InstantSource>, service: S
       const arrangementId = source.arrangementId ?? lookup(library.songs, source.songId)?.arrangements[0]?.id ?? ''
       return buildDeck({ id, type: 'song', songId: source.songId, arrangementId }, service, library, bibles)
     }
+    if (source.type === 'presentation') return buildDeck({ id, type: 'presentation', presentationId: source.presentationId }, service, library, bibles)
     const passage: ScripturePassage = { id, ref: source.ref, splitLong: true, translations: source.translations, versesPerSlide: source.versesPerSlide }
     const language = bibles.find((b) => b.code === source.translations[0])?.language ?? 'en'
     const base = { itemId: id, kind: 'scripture' as const, notes: '', minutes: 0, musicalKey: '', themeId: service.themeId ?? null, backgroundId: null, isPlaceholder: false }
@@ -70,6 +75,13 @@ function buildDeck(item: ServiceItem, service: Service, library: Library, bibles
     return { ...base, title: formatReference(passage.ref, language), subtitle: passage.translations.join(' + '), slides: scriptureSlides(passage, bibles) }
   }
 
+  if (item.type === 'presentation') {
+    const presentation = lookup(library.presentations, item.presentationId)
+    if (!presentation) return { ...base, title: 'Missing slides', subtitle: item.presentationId, slides: [] }
+    const pages = presentation.pages.length
+    return { ...base, isLooping: presentation.isLooping, title: presentation.title, subtitle: `${pages} ${pages === 1 ? 'page' : 'pages'}${presentation.isLooping ? ' · loops' : ''}`, slides: presentationSlides(presentation, library) }
+  }
+
   const song = lookup(library.songs, item.songId)
   if (!song) return { ...base, title: 'Missing song', subtitle: item.songId, slides: [] }
   const arrangement = song.arrangements.find((a) => a.id === item.arrangementId) ?? song.arrangements[0]
@@ -94,4 +106,23 @@ export function findDeck(decks: Deck[], ref: SlideRef | null): Deck | null {
 export function findSlide(decks: Deck[], ref: SlideRef | null): DeckSlide | null {
   if (!ref) return null
   return decks.find((d) => d.itemId === ref.itemId)?.slides[ref.index] ?? null
+}
+
+/** A media item's URL for outputs, or null when the item is gone. */
+export const mediaSource = (library: Library) => (mediaId: Id) => {
+  const item = lookup(library.media, mediaId)
+  return item ? mediaUrl(item.file) : null
+}
+
+export function presentationSlides(presentation: Presentation, library: Library): DeckSlide[] {
+  const src = mediaSource(library)
+  return presentation.pages.map((page) => ({
+    kind: 'other',
+    label: page.name,
+    lines: pageText(page),
+    secondaryLines: [],
+    reference: '',
+    page: pageRender(page, src),
+    advanceAfter: page.advanceAfter,
+  }))
 }

@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { Song } from '@openstage/shared'
+import { documentKindKeys, type Song } from '@openstage/shared'
 import { applySongEdit } from '../edits'
 import { starterLibrary } from '../starter-library'
 import { DocumentStore } from './document-store'
@@ -26,7 +26,7 @@ describe('DocumentStore', () => {
   it('round-trips a whole library, one file per document', async () => {
     const root = join(await tempDir(), 'library')
     const { store, errors } = storeAt(root)
-    expect(await store.missingKinds()).toHaveLength(8)
+    expect(await store.missingKinds()).toHaveLength(documentKindKeys.length)
     await store.saveAll(starterLibrary)
     expect(await store.missingKinds()).toEqual([])
     expect((await readdir(join(root, 'songs'))).sort()).toEqual(['amazing-grace.json', 'it-is-well.json'])

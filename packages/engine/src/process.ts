@@ -75,6 +75,7 @@ export async function startEngineProcess(): Promise<void> {
     // Tests set this so they never reach bible.com or a song catalogue.
     bibleCom: process.env['OPENSTAGE_OFFLINE'] ? undefined : { client: new BibleComClient(), stagingDir: join(dataDir, 'bible-downloads') },
     songSources: process.env['OPENSTAGE_OFFLINE'] ? {} : { worshipLeader: new WorshipLeaderClient() },
+    mediaDir: join(dataDir, 'library', 'media-files'),
     onDocumentRemove: (kind, id) => {
       index.remove(kind, id)
       store.remove(kind, id).catch(report('a removed document'))

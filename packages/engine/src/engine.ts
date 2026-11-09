@@ -52,16 +52,35 @@ import {
   type ServiceItem,
   type SongEdit,
   type ThemeEdit,
+  cleanMediaSettings,
+  cleanOverlay,
+  type MediaItem,
+  type PresentationEdit,
 } from '@openstage/shared'
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
+import { copyFile, mkdir, unlink } from 'node:fs/promises'
+import { extname, isAbsolute, join } from 'node:path'
 import { BibleComError, downloadVersion, DownloadCancelled, type BibleComClient } from './bibles/biblecom'
 import { bibleInfo } from './bibles/store'
 import { readFiles } from './import/detect'
 import { findDuplicate, isBibleCode, mergeInto, planItems, songFromImport } from './import/plan'
 import type { ImportedSong, Parsed } from './import/types'
-import { buildDecks, buildInstantDecks, scriptureSlides } from './decks'
+import { buildDecks, buildInstantDecks, findSlide, scriptureSlides } from './decks'
 import { cleanInstant, cleanSource, pruneInstant } from './instant'
-import { applyPassageEdit, applyServiceEdit, applySongEdit, applyTemplateEdit, applyThemeEdit, createPassage, createSong, createTemplate, createTheme, isPassageRef } from './edits'
+import {
+  applyPassageEdit,
+  applyPresentationEdit,
+  applyServiceEdit,
+  applySongEdit,
+  applyTemplateEdit,
+  applyThemeEdit,
+  createPassage,
+  createPresentation,
+  createSong,
+  createTemplate,
+  createTheme,
+  isPassageRef,
+} from './edits'
 import { blankRender, outputs, resolveRender, type OutputId } from './resolve'
 import { initialState, noTiming, reduce, sanitize } from './state'
 import { DocumentHistory } from './store/history'
@@ -85,6 +104,7 @@ interface Edits {
   passages: PassageEdit
   services: ServiceEdit
   templates: TemplateEdit
+  presentations: PresentationEdit
 }
 
 type History = DocumentHistory<DocumentTypes[EditableKind], Edits[EditableKind]>
@@ -95,6 +115,13 @@ const appliers: { [K in EditableKind]: (document: DocumentTypes[K], edit: Edits[
   passages: applyPassageEdit,
   services: applyServiceEdit,
   templates: applyTemplateEdit,
+  presentations: applyPresentationEdit,
+}
+
+/** File types the media library takes, by extension; anything else is refused before it is copied. */
+const mediaExtensions: Record<MediaItem['type'], string[]> = {
+  image: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.bmp'],
+  video: ['.mp4', '.webm', '.m4v', '.mov', '.ogv', '.mkv'],
 }
 
 const isEditable = (kind: unknown): kind is EditableKind => typeof kind === 'string' && Object.hasOwn(appliers, kind)
@@ -132,6 +159,8 @@ export interface EngineOptions {
   /** Where bible.com downloads come from and where their chapters wait until the version is complete. */
   bibleCom?: { client: BibleComClient; stagingDir: string; retryDelayMs?: number }
   songSources?: Partial<Record<SongSourceKey, SongCatalogClient>>
+  /** Where imported images and videos are copied; without it media cannot be imported. */
+  mediaDir?: string
 }
 
 /** What the engine needs from an online song catalogue. */
@@ -180,6 +209,11 @@ export class Engine {
   private settings: EngineSettings
   /** What the screens show while rehearsing; null when not rehearsing. */
   private onAir: EngineState | null = null
+  /** The live slide and playback the timers below were set for; compared by identity, since every change makes a new object. */
+  private timedSlide: EngineState['live']['slide'] = null
+  private timedPlayback: EngineState['playback'] = null
+  private advanceTimer: ReturnType<typeof setTimeout> | null = null
+  private mediaTimer: ReturnType<typeof setTimeout> | null = null
   private failedUnlocks = 0
   private unlockBlockedUntil = 0
   private readonly channels = new Map<OutputId, OutputChannel>()
@@ -309,6 +343,33 @@ export class Engine {
       }
       case 'bible.remove':
         return this.removeBible(command.code)
+      case 'overlay.save': {
+        const overlay = cleanOverlay(command.overlay)
+        return overlay ? this.store('overlays', overlay) : undefined
+      }
+      case 'overlay.delete':
+        return this.removeDocument('overlays', command.overlayId)
+      case 'overlay.show':
+      case 'overlay.hide':
+        return this.toggleOverlay(command.overlayId, command.type === 'overlay.show')
+      case 'media.import':
+        return void this.importMedia(command)
+      case 'media.update': {
+        const item = lookup(this.library.media, command.mediaId)
+        return item && command.changes && typeof command.changes === 'object' ? this.store('media', cleanMediaSettings(command.changes, item)) : undefined
+      }
+      case 'media.delete':
+        return void this.deleteMedia(command.mediaId)
+      case 'media.show':
+      case 'media.control':
+        return this.playMedia(command)
+      case 'presentation.create':
+        if (!isSafeId(command.presentationId) || Object.hasOwn(this.library.presentations, command.presentationId)) return
+        return this.store('presentations', createPresentation(command.presentationId, command.title, lookup(this.library.presentations, command.fromPresentationId)))
+      case 'presentation.delete':
+        return this.deletePresentation(command.presentationId)
+      case 'presentation.edit':
+        return this.edit('presentations', command.presentationId, (history) => history.execute(command.edit))
       case 'lowerThird.save':
         return this.saveLowerThird(command.lowerThird)
       case 'lowerThird.delete':
@@ -345,6 +406,8 @@ export class Engine {
         audioCues: Object.values(this.library.audioCues).sort(byName),
         backgrounds: Object.values(this.library.backgrounds).sort(byName),
         lowerThirds: Object.values(this.library.lowerThirds).sort((a, b) => a.title.localeCompare(b.title)),
+        overlays: Object.values(this.library.overlays).sort(byName),
+        media: Object.values(this.library.media).sort(byName),
       },
       bibles: this.bibles.map(bibleInfo),
       bundledBibles: this.options.bundledBibles ?? [],
@@ -650,11 +713,80 @@ export class Engine {
   }
 
   private deleteLowerThird(lowerThirdId: Id): void {
-    if (!Object.hasOwn(this.library.lowerThirds, lowerThirdId)) return
-    const { [lowerThirdId]: _removed, ...lowerThirds } = this.library.lowerThirds
-    this.library = { ...this.library, lowerThirds }
-    this.options.onDocumentRemove?.('lowerThirds', lowerThirdId)
-    this.afterLibraryChange({ kind: 'lowerThirds', id: lowerThirdId })
+    this.removeDocument('lowerThirds', lowerThirdId)
+  }
+
+  private removeDocument(kind: 'lowerThirds' | 'overlays' | 'media' | 'presentations', id: Id): void {
+    if (!Object.hasOwn(this.library[kind], id)) return
+    const { [id]: _removed, ...rest } = this.library[kind] as Record<Id, unknown>
+    this.library = { ...this.library, [kind]: rest }
+    this.histories.delete(`${kind}/${id}`)
+    this.options.onDocumentRemove?.(kind, id)
+    this.afterLibraryChange({ kind, id })
+  }
+
+  /** Refused while any service uses the deck, like songs and passages. */
+  private deletePresentation(presentationId: Id): void {
+    const isUsed = Object.values(this.library.services).some((s) => s.items.some((i) => i.type === 'presentation' && i.presentationId === presentationId))
+    if (!isUsed) this.removeDocument('presentations', presentationId)
+  }
+
+  private toggleOverlay(overlayId: Id, isOn: boolean): void {
+    if (!Object.hasOwn(this.library.overlays, overlayId)) return
+    const others = this.state.live.overlays.filter((id) => id !== overlayId)
+    const overlays = isOn ? [...others, overlayId] : others
+    this.setState({ ...this.state, isBlack: isOn ? false : this.state.isBlack, live: { ...this.state.live, overlays } })
+    this.publish()
+  }
+
+  private async importMedia(command: Extract<Command, { type: 'media.import' }>): Promise<void> {
+    const { mediaDir } = this.options
+    const type = command.mediaType === 'video' ? 'video' : 'image'
+    const extension = typeof command.path === 'string' ? extname(command.path).toLowerCase() : ''
+    const isAllowed = mediaExtensions[type].includes(extension)
+    if (!mediaDir || !isSafeId(command.mediaId) || Object.hasOwn(this.library.media, command.mediaId) || !isAbsolute(command.path) || !isAllowed) return
+    const file = `${command.mediaId}${extension}`
+    try {
+      await mkdir(mediaDir, { recursive: true })
+      await copyFile(command.path, join(mediaDir, file))
+    } catch (error) {
+      console.warn('[engine] could not copy media', error)
+      return
+    }
+    const name = (typeof command.name === 'string' && command.name.trim().slice(0, 200)) || file
+    const duration = typeof command.duration === 'number' && Number.isFinite(command.duration) && command.duration > 0 ? command.duration : null
+    this.store('media', { id: command.mediaId, name, type, file, duration, fit: 'cover', volume: 1, isMuted: false, ending: 'freeze', startAt: 0, endAt: null, fadeMs: 300 })
+  }
+
+  private async deleteMedia(mediaId: Id): Promise<void> {
+    const item = lookup(this.library.media, mediaId)
+    if (!item) return
+    this.removeDocument('media', mediaId)
+    if (this.options.mediaDir) await unlink(join(this.options.mediaDir, item.file)).catch(() => {})
+  }
+
+  /** Starts, pauses or restarts the media layer; outputs play on from the position and time they are given. */
+  private playMedia(command: Extract<Command, { type: 'media.show' | 'media.control' }>): void {
+    const now = this.now()
+    const { playback, live } = this.state
+    const mediaId = command.type === 'media.show' ? command.mediaId : live.media
+    const item = lookup(this.library.media, mediaId)
+    if (!item) return
+    const playing = playback && !playback.isPaused ? playback.position + (now - playback.at) / 1000 : playback?.position ?? item.startAt
+    const fresh = { startedAt: now, position: item.startAt, at: now, isPaused: false }
+    const next =
+      command.type === 'media.show' || command.action === 'restart'
+        ? fresh
+        : !playback
+          ? fresh
+          : command.action === 'pause'
+            ? { ...playback, position: playing, at: now, isPaused: true }
+            : { ...playback, at: now, isPaused: false }
+    // A designed page has its own background and would hide what starts playing under it; lyrics stay on top of it.
+    const slide = command.type === 'media.show' ? findSlide(this.decksFor(), live.slide) : null
+    const isCovered = !!slide?.page && slide.page.background.kind !== 'none'
+    this.setState({ ...this.state, isBlack: false, playback: next, live: { ...live, media: item.id, slide: isCovered ? null : live.slide } })
+    this.publish()
   }
 
   private deletePassage(passageId: Id): void {
@@ -920,6 +1052,40 @@ export class Engine {
   private publish(): void {
     for (const id of this.resolveOutputs()) this.sendRender(id)
     this.sendSnapshots()
+    this.scheduleAdvance()
+    this.scheduleMediaEnd()
+  }
+
+  /** A page with `advanceAfter` moves on by itself, unless the operator moved first or blacked the screen. */
+  private scheduleAdvance(): void {
+    const ref = this.state.live.slide
+    if (ref === this.timedSlide) return
+    this.timedSlide = ref
+    if (this.advanceTimer) clearTimeout(this.advanceTimer)
+    this.advanceTimer = null
+    const seconds = ref ? findSlide(this.decksFor(), ref)?.advanceAfter : null
+    if (!seconds) return
+    this.advanceTimer = setTimeout(() => {
+      if (this.state.live.slide === ref && !this.state.isBlack) this.dispatch({ type: 'live.next' })
+    }, seconds * 1000)
+    this.advanceTimer.unref?.()
+  }
+
+  /** A video set to clear when it ends takes the media layer off when its time is up. */
+  private scheduleMediaEnd(): void {
+    const playback = this.state.playback
+    if (playback === this.timedPlayback) return
+    this.timedPlayback = playback
+    if (this.mediaTimer) clearTimeout(this.mediaTimer)
+    this.mediaTimer = null
+    const item = lookup(this.library.media, this.state.live.media)
+    const end = item?.endAt ?? item?.duration
+    if (!playback || playback.isPaused || !item || item.type !== 'video' || item.ending !== 'clear' || !end) return
+    const remaining = end - (playback.position + (this.now() - playback.at) / 1000)
+    this.mediaTimer = setTimeout(() => {
+      if (this.state.playback === playback) this.dispatch({ type: 'layer.clear', layer: 'media' })
+    }, Math.max(0, remaining) * 1000)
+    this.mediaTimer.unref?.()
   }
 
   /** Returns the outputs whose frame actually changed; only those get a new seq. */

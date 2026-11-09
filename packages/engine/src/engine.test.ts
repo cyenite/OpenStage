@@ -1,8 +1,8 @@
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
-import type { ClientMessage, EngineMessage, EngineState, RenderState } from '@openstage/shared'
+import { describe, expect, it, vi } from 'vitest'
+import { newElement, newPage, type ClientMessage, type EngineMessage, type EngineState, type PresentationEdit, type RenderState } from '@openstage/shared'
 import { Engine, type ClientPort } from './engine'
 import { buildDecks } from './decks'
 import { initialState, reduce } from './state'
@@ -91,13 +91,13 @@ describe('reduce', () => {
     let state = reduce(start, { type: 'live.take' }, decks)
     state = reduce(state, { type: 'lowerThird.set', lowerThirdId: 'pastor' }, decks)
     state = reduce(state, { type: 'layer.clear', layer: 'slide' }, decks)
-    expect(state.live).toEqual({ slide: null, audio: null, background: 'night-blue', lowerThird: 'pastor' })
+    expect(state.live).toEqual({ slide: null, audio: null, background: 'night-blue', lowerThird: 'pastor', media: null, overlays: [] })
   })
 
   it('clears every layer at once', () => {
     let state = reduce(start, { type: 'audio.set', audioCueId: 'walk-in' }, decks)
     state = reduce(state, { type: 'layer.clearAll' }, decks)
-    expect(Object.values(state.live).every((v) => v === null)).toBe(true)
+    expect(state.live).toEqual({ slide: null, audio: null, background: null, lowerThird: null, media: null, overlays: [] })
   })
 })
 
@@ -852,5 +852,123 @@ describe('Engine song catalogues', () => {
     await ask({ type: 'songs.catalog', source: 'worshipLeader', language: 'en' })
     expect(packs()).toBe(2)
     expect(await ask({ type: 'songs.catalog', source: 'nowhere', language: 'en' })).toMatchObject({ error: 'The song catalogue is not available.' })
+  })
+})
+
+describe('Engine slides, overlays and media', () => {
+  const connected = () => {
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary })
+    const projector = fakePort()
+    engine.connect(projector.port, { role: 'output', outputId: 'projector' })
+    return { engine, projector, last: () => projector.renders().at(-1)! }
+  }
+
+  it('creates a deck, cleans pages on the way in, and shows them from the service with QR codes resolved', () => {
+    const { engine, last } = connected()
+    engine.dispatch({ type: 'presentation.create', presentationId: 'notices', title: '  Notices ' })
+    const edit = (change: PresentationEdit) => engine.dispatch({ type: 'presentation.edit', presentationId: 'notices', edit: change })
+    const page = { ...newPage('p2', 'Give'), elements: [newElement('qr', 'code'), { ...newElement('text', 'words'), text: 'Scan me', style: { size: 99, color: 'red; background: url(x)' } }] }
+    edit({ type: 'presentation.addPage', page: page as never })
+    const deck = engine.documents.presentations.notices!
+    expect(deck.title).toBe('Notices')
+    expect(deck.pages.map((p) => p.id)).toEqual(['p1', 'p2'])
+    const text = deck.pages[1]!.elements[1]!
+    expect(text.kind === 'text' && text.style).toMatchObject({ size: 0.5, color: '#FFFFFF' })
+
+    engine.dispatch({ type: 'service.edit', serviceId: 'sunday', edit: { type: 'service.addPresentation', itemId: 'item-notices', presentationId: 'notices' } })
+    engine.dispatch({ type: 'live.show', ref: { itemId: 'item-notices', index: 1 } })
+    const qr = last().slide!.page!.elements[0]!
+    expect(qr.kind === 'qr' && qr.modules.length).toBeGreaterThan(20)
+    expect(last().slide!.boxes).toEqual([])
+
+    edit({ type: 'presentation.removePage', pageId: 'p1' })
+    edit({ type: 'presentation.removePage', pageId: 'p2' })
+    expect(engine.documents.presentations.notices!.pages).toHaveLength(1)
+    engine.dispatch({ type: 'presentation.delete', presentationId: 'notices' })
+    expect(engine.documents.presentations.notices).toBeDefined()
+  })
+
+  it('loops a looping deck and moves pages on by themselves', () => {
+    vi.useFakeTimers()
+    try {
+      const { engine } = connected()
+      engine.dispatch({ type: 'instant.show', source: { type: 'presentation', presentationId: 'welcome-loop' }, index: 2, isLive: true })
+      expect(engine.current.live.slide!.index).toBe(2)
+      vi.advanceTimersByTime(12_000)
+      expect(engine.current.live.slide!.index).toBe(0)
+      engine.dispatch({ type: 'screens.black', isBlack: true })
+      vi.advanceTimersByTime(12_000)
+      expect(engine.current.live.slide!.index).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows several overlays at once over everything, and clears them together', () => {
+    const { engine, last } = connected()
+    engine.dispatch({ type: 'overlay.show', overlayId: 'announcements' })
+    engine.dispatch({ type: 'overlay.show', overlayId: 'corner-clock' })
+    engine.dispatch({ type: 'overlay.show', overlayId: 'announcements' })
+    expect(last().overlays.map((o) => o.id)).toEqual(['corner-clock', 'announcements'])
+    expect(last().overlays[1]).toMatchObject({ kind: 'ticker', label: 'NEWS' })
+    engine.dispatch({ type: 'overlay.save', overlay: { ...engine.documents.overlays.announcements!, text: 'Changed' } as never })
+    expect(last().overlays[1]).toMatchObject({ text: 'Changed' })
+    engine.dispatch({ type: 'layer.clear', layer: 'overlays' })
+    expect(last().overlays).toEqual([])
+    engine.dispatch({ type: 'overlay.show', overlayId: 'nope' })
+    expect(engine.current.live.overlays).toEqual([])
+  })
+
+  it('copies imported media, plays, pauses and restarts it, and clears it', async () => {
+    let now = 1_000_000
+    const dir = await mkdtemp(join(tmpdir(), 'openstage-media-'))
+    const source = join(dir, 'clip.mp4')
+    await writeFile(source, 'not really a video')
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary, mediaDir: join(dir, 'library'), now: () => now })
+    const projector = fakePort()
+    engine.connect(projector.port, { role: 'output', outputId: 'projector' })
+    engine.dispatch({ type: 'media.import', mediaId: 'clip', name: 'Clip', path: source, mediaType: 'video', duration: 30 })
+    engine.dispatch({ type: 'media.import', mediaId: 'bad', name: 'Bad', path: join(dir, 'x.exe'), mediaType: 'video', duration: 1 })
+    await vi.waitFor(() => expect(engine.documents.media.clip).toBeDefined())
+    expect(await readFile(join(dir, 'library', 'clip.mp4'), 'utf8')).toBe('not really a video')
+    expect(engine.documents.media.bad).toBeUndefined()
+
+    engine.dispatch({ type: 'media.update', mediaId: 'clip', changes: { startAt: 5, volume: 7 } })
+    expect(engine.documents.media.clip).toMatchObject({ startAt: 5, volume: 1 })
+    engine.dispatch({ type: 'media.show', mediaId: 'clip' })
+    const media = () => projector.renders().at(-1)!.media!
+    expect(media()).toMatchObject({ type: 'video', src: 'openstage-media://file/clip.mp4', position: 5, isPaused: false })
+    now += 4000
+    engine.dispatch({ type: 'media.control', action: 'pause' })
+    expect(media()).toMatchObject({ position: 9, isPaused: true })
+    now += 10_000
+    engine.dispatch({ type: 'media.control', action: 'play' })
+    expect(media()).toMatchObject({ position: 9, isPaused: false, at: now })
+    const key = media().key
+    engine.dispatch({ type: 'media.control', action: 'restart' })
+    expect(media().key).not.toBe(key)
+    engine.dispatch({ type: 'layer.clear', layer: 'media' })
+    expect(projector.renders().at(-1)!.media).toBeNull()
+    expect(engine.current.playback).toBeNull()
+  })
+
+  it('takes a designed page off when media starts, so the video is not hidden under it', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'openstage-media-'))
+    await writeFile(join(dir, 'a.mp4'), 'x')
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary, mediaDir: join(dir, 'library') })
+    engine.dispatch({ type: 'media.import', mediaId: 'clip', name: 'Clip', path: join(dir, 'a.mp4'), mediaType: 'video', duration: 5 })
+    await vi.waitFor(() => expect(engine.documents.media.clip).toBeDefined())
+    engine.dispatch({ type: 'live.take' })
+    engine.dispatch({ type: 'media.show', mediaId: 'clip' })
+    expect(engine.current.live.slide).not.toBeNull()
+    engine.dispatch({ type: 'instant.show', source: { type: 'presentation', presentationId: 'welcome-loop' }, index: 0, isLive: true })
+    engine.dispatch({ type: 'media.show', mediaId: 'clip' })
+    expect(engine.current.live.slide).toBeNull()
+  })
+
+  it('finds decks by the words on their pages', () => {
+    const index = new LibraryIndex()
+    index.rebuild(starterLibrary)
+    expect(index.search('mandazi').map((h) => h.id)).toEqual(['welcome-loop'])
   })
 })

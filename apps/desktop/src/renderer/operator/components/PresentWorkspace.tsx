@@ -17,10 +17,12 @@ interface PresentWorkspaceProps {
   onManageBibles: () => void
   onGetSongs: () => void
   onOpenSongs: () => void
+  onEditSlides: (presentationId: Id | null) => void
+  onEditMedia: (mediaId: Id | null) => void
 }
 
 /** The live screen: service order, every slide in the middle, the screens and their layers on the right. */
-export function PresentWorkspace({ snapshot, libraryRequest, onAdd, onEdit, onEditSong, onManageBibles, onGetSongs, onOpenSongs }: PresentWorkspaceProps) {
+export function PresentWorkspace({ snapshot, libraryRequest, onAdd, onEdit, onEditSong, onManageBibles, onGetSongs, onOpenSongs, onEditSlides, onEditMedia }: PresentWorkspaceProps) {
   const [isDrawerOpen, setDrawerOpen] = useState(false)
   const [focusRequest, setFocusRequest] = useState(0)
   const [libraryDeckId, setLibraryDeckId] = useState<Id | null>(null)
@@ -40,7 +42,7 @@ export function PresentWorkspace({ snapshot, libraryRequest, onAdd, onEdit, onEd
     <>
       <ServiceOrder snapshot={snapshot} onAdd={onAdd} onEdit={onEdit} onOpenSongs={onOpenSongs} />
       <main className="present-main">
-        <ShowGrid snapshot={snapshot} libraryDeckId={libraryDeckId} target={target} onCloseLibrary={() => setLibraryDeckId(null)} onEdit={onEdit} onEditSong={onEditSong} />
+        <ShowGrid snapshot={snapshot} libraryDeckId={libraryDeckId} target={target} onCloseLibrary={() => setLibraryDeckId(null)} onEdit={onEdit} onEditSong={onEditSong} onEditSlides={onEditSlides} />
         <LibraryDrawer
           snapshot={snapshot}
           target={target}
@@ -50,6 +52,8 @@ export function PresentWorkspace({ snapshot, libraryRequest, onAdd, onEdit, onEd
           onOpenDeck={setLibraryDeckId}
           onManageBibles={onManageBibles}
           onGetSongs={onGetSongs}
+          onEditSlides={onEditSlides}
+          onEditMedia={onEditMedia}
         />
       </main>
       <OutputColumn snapshot={snapshot} />

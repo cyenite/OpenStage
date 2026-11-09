@@ -19,6 +19,9 @@ export const documentValidators: { [K in DocumentKind]: (value: Fields) => boole
   audioCues: (v) => isText(v.name),
   themes: (v) => isText(v.name) && isFields(v.boxes),
   templates: (v) => isText(v.name) && isList(v.slots),
+  presentations: (v) => isText(v.title) && isList(v.pages),
+  overlays: (v) => isText(v.name) && isText(v.kind),
+  media: (v) => isText(v.name) && isText(v.file) && (v.type === 'image' || v.type === 'video'),
 }
 
 export function isValidDocument(kind: DocumentKind, value: unknown): boolean {

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { Chrome, WindowState } from '../chrome'
 
 // MessagePorts cannot cross contextBridge, so the port is handed to the page with window.postMessage.
@@ -8,6 +8,7 @@ ipcRenderer.on('engine-port', (event, hello) => {
 
 const chrome: Chrome = {
   platform: process.platform,
+  pathForFile: (file) => webUtils.getPathForFile(file),
   setTheme: (source) => ipcRenderer.send('theme', source),
   windowAction: (action) => ipcRenderer.send('window', action),
   onWindowState: (listener) => {

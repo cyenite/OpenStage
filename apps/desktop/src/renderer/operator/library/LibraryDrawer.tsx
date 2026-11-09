@@ -3,6 +3,8 @@ import type { Id, OperatorSnapshot } from '@openstage/shared'
 import { dispatch } from '../engine'
 import { BibleTab } from './BibleTab'
 import { LibraryCard } from './LibraryCard'
+import { MediaTab } from './MediaTab'
+import { SlidesTab } from './SlidesTab'
 import { SongsTab } from './SongsTab'
 import { actionHint, actionLabel, applyResult, targetItem, useLibraryResults, type AddTarget, type LibraryFilter } from './results'
 import { useStoredState } from './useStoredState'
@@ -11,6 +13,8 @@ import { useStoredState } from './useStoredState'
 export const libraryTabs = [
   { key: 'songs', label: 'Songs', filter: null },
   { key: 'bible', label: 'Bible', filter: null },
+  { key: 'slides', label: 'Slides', filter: null },
+  { key: 'media', label: 'Media', filter: null },
   { key: 'backgrounds', label: 'Backgrounds', filter: 'backgrounds' },
   { key: 'audio', label: 'Audio', filter: 'audio' },
 ] as const satisfies readonly { key: string; label: string; filter: LibraryFilter | null }[]
@@ -31,10 +35,13 @@ interface LibraryDrawerProps {
   onOpenDeck: (deckId: Id) => void
   onManageBibles: () => void
   onGetSongs: () => void
+  /** Opens Edit on these slides, or on the slides library when null. */
+  onEditSlides: (presentationId: Id | null) => void
+  onEditMedia: (mediaId: Id | null) => void
 }
 
 /** Present's Library, closed under the slide grid until it is needed; nothing in it changes the screens until a slide is clicked. */
-export function LibraryDrawer({ snapshot, target, isOpen, focusRequest, onOpenChange, onOpenDeck, onManageBibles, onGetSongs }: LibraryDrawerProps) {
+export function LibraryDrawer({ snapshot, target, isOpen, focusRequest, onOpenChange, onOpenDeck, onManageBibles, onGetSongs, onEditSlides, onEditMedia }: LibraryDrawerProps) {
   const [tab, setTab] = useStoredState<LibraryTab>('openstage.libraryTab', 'songs', isTab)
   const [height, setHeight] = useStoredState<number>('openstage.drawerHeight', 300, isHeight)
   const drawer = useRef<HTMLElement>(null)
@@ -80,6 +87,8 @@ export function LibraryDrawer({ snapshot, target, isOpen, focusRequest, onOpenCh
         <div className="library-tab-body" role="tabpanel">
           {tab === 'songs' && <SongsTab snapshot={snapshot} focusRequest={focusRequest} onOpenDeck={onOpenDeck} onGetSongs={onGetSongs} />}
           {tab === 'bible' && <BibleTab snapshot={snapshot} target={target} focusRequest={focusRequest} onOpenDeck={onOpenDeck} onManage={onManageBibles} />}
+          {tab === 'slides' && <SlidesTab snapshot={snapshot} focusRequest={focusRequest} onOpenDeck={onOpenDeck} onEditSlides={onEditSlides} />}
+          {tab === 'media' && <MediaTab snapshot={snapshot} onManage={onEditMedia} />}
           {filter && <LayerTab snapshot={snapshot} target={target} filter={filter} />}
         </div>
       )}

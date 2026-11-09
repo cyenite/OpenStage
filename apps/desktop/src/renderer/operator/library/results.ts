@@ -22,6 +22,7 @@ export const libraryFilters = [
   { key: 'all', label: 'All', isLive: false },
   { key: 'songs', label: 'Songs', isLive: false },
   { key: 'scripture', label: 'Bible', isLive: false },
+  { key: 'slides', label: 'Slides', isLive: false },
   { key: 'backgrounds', label: 'Backgrounds', isLive: false },
   { key: 'parts', label: 'Parts', isLive: false },
   { key: 'lowerThirds', label: 'Lower thirds', isLive: true },
@@ -35,6 +36,7 @@ export type LibraryResult =
   | { filter: 'scripture'; key: string; id: Id; title: string; detail: string; snippet: string }
   /** A reference typed into the search box, not yet a passage in the library. */
   | { filter: 'scripture'; key: string; ref: PassageRef; text: string; title: string; detail: string; snippet: string; translations?: string[] }
+  | { filter: 'slides'; key: string; id: Id; title: string; detail: string; snippet: string }
   | { filter: 'backgrounds'; key: string; id: Id; title: string; render: BackgroundRender }
   | { filter: 'parts'; key: string; part: HeadingKind; title: string; detail: string }
   | { filter: 'lowerThirds'; key: string; id: Id; title: string; detail: string }
@@ -61,6 +63,7 @@ export function resultBadge(result: LibraryResult): string {
   if (result.filter === 'parts') return itemKinds.find((k) => k.key === result.part)!.badge
   if (result.filter === 'songs') return itemKinds.find((k) => k.key === 'song')!.badge
   if (result.filter === 'scripture') return itemKinds.find((k) => k.key === 'scripture')!.badge
+  if (result.filter === 'slides') return itemKinds.find((k) => k.key === 'presentation')!.badge
   return result.filter === 'lowerThirds' ? 'LT' : result.filter === 'audio' ? 'AU' : ''
 }
 
@@ -69,9 +72,10 @@ const partKinds = itemKinds.filter((k): k is (typeof itemKinds)[number] & { key:
 export function useLibraryResults(snapshot: OperatorSnapshot, text: string, filter: LibraryFilter, includeLive: boolean): { results: LibraryResult[]; isFresh: boolean } {
   const query = text.trim()
   const revision = snapshot.libraryRevision
-  const ask = (kind: 'songs' | 'passages') => (query ? ({ type: 'library.search', text: query, kind, limit: 40 } as const) : ({ type: 'library.list', kind } as const))
+  const ask = (kind: 'songs' | 'passages' | 'presentations') => (query ? ({ type: 'library.search', text: query, kind, limit: 40 } as const) : ({ type: 'library.list', kind } as const))
   const { hits: songs, isFresh: hasSongs } = useLibrarySearch(ask('songs'), revision)
   const { hits: passages, isFresh: hasPassages } = useLibrarySearch(ask('passages'), revision)
+  const { hits: decks, isFresh: hasDecks } = useLibrarySearch(ask('presentations'), revision)
   const parsed = query ? parseReference(query) : null
   const needle = query.toLowerCase()
   const matches = (name: string) => !needle || name.toLowerCase().includes(needle)
@@ -86,6 +90,7 @@ export function useLibraryResults(snapshot: OperatorSnapshot, text: string, filt
     ...(query || filter === 'scripture'
       ? passages.map((hit) => ({ filter: 'scripture', key: `passage:${hit.id}`, id: hit.id, title: hit.title, detail: hit.detail, snippet: hit.snippet }) as const)
       : []),
+    ...decks.map((hit) => ({ filter: 'slides', key: `slides:${hit.id}`, id: hit.id, title: hit.title, detail: `Slides · ${hit.detail}`, snippet: hit.snippet }) as const),
     ...backgrounds.filter((b) => matches(b.name)).map((b) => ({ filter: 'backgrounds', key: `bg:${b.id}`, id: b.id, title: b.name, render: b.render }) as const),
     ...partKinds.filter((k) => matches(k.label)).map((k) => ({ filter: 'parts', key: `part:${k.key}`, part: k.key, title: k.label, detail: `Part · ${k.minutes} min` }) as const),
     ...(includeLive
@@ -95,7 +100,7 @@ export function useLibraryResults(snapshot: OperatorSnapshot, text: string, filt
         ]
       : []),
   ]
-  return { results: filter === 'all' ? results : results.filter((r) => r.filter === filter), isFresh: hasSongs && hasPassages }
+  return { results: filter === 'all' ? results : results.filter((r) => r.filter === filter), isFresh: hasSongs && hasPassages && hasDecks }
 }
 
 export function targetItem(target: AddTarget): ServiceItem | undefined {
@@ -143,6 +148,9 @@ export function applyResult(result: LibraryResult, target: AddTarget, atEnd = fa
       edit(slot ? { type: 'service.fillSlot', itemId, passageId } : { type: 'service.addPassage', itemId, passageId, afterItemId })
       break
     }
+    case 'slides':
+      edit({ type: 'service.addPresentation', itemId, presentationId: result.id, afterItemId })
+      break
     case 'parts':
       edit({ type: 'service.addHeading', itemId, kind: result.part, title: result.title, afterItemId })
       break
@@ -164,6 +172,12 @@ export function applyResult(result: LibraryResult, target: AddTarget, atEnd = fa
 
 /** Adds a song or passage that was opened from the Library to the service, after the selected item. */
 export function addInstantToService(source: InstantSource, title: string, target: AddTarget): Id | null {
+  if (source.type === 'presentation') {
+    const itemId = newId(title)
+    dispatch({ type: 'service.edit', serviceId: target.service.id, edit: { type: 'service.addPresentation', itemId, presentationId: source.presentationId, afterItemId: target.afterItemId ?? undefined } })
+    if (target.isOpen) dispatch({ type: 'item.select', itemId })
+    return itemId
+  }
   if (source.type === 'song') return applyResult({ filter: 'songs', key: source.songId, id: source.songId, title, detail: '', snippet: '' }, target)
   return applyResult({ filter: 'scripture', key: title, ref: source.ref, text: title, title, detail: '', snippet: '', translations: source.translations }, target)
 }

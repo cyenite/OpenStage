@@ -20,6 +20,7 @@ export function cleanSource(raw: unknown): InstantSource | null {
     if (!isSafeId(source.songId) || (source.arrangementId !== undefined && !isSafeId(source.arrangementId))) return null
     return { type: 'song', songId: source.songId, ...(source.arrangementId && { arrangementId: source.arrangementId }) }
   }
+  if (source?.type === 'presentation') return isSafeId(source.presentationId) ? { type: 'presentation', presentationId: source.presentationId } : null
   if (source?.type === 'scripture') {
     const ref = cleanRef(source.ref)
     const translations = Array.isArray(source.translations) ? source.translations.filter((c): c is string => typeof c === 'string' && /^[A-Za-z0-9-]{1,16}$/.test(c)).slice(0, 2) : []

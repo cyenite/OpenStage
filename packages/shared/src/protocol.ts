@@ -4,6 +4,7 @@ import type { BibleInfo, PassageRef } from './scripture'
 import type { ServiceReadiness } from './services'
 import type { StageLayoutKey, StageState } from './stage'
 import type { BoxPatch, Theme, ThemeBoxRole } from './themes'
+import type { MediaItem, Overlay, Page } from './slides'
 import type { AudioCue, Background, Deck, DeckSlide, DocumentKind, DocumentRef, DocumentTypes, HeadingKind, Id, LowerThird, SectionKind, Service, ServiceTeam, ServiceTemplate, Song, TemplateSlot } from './library'
 import type { LayerKey } from './layers'
 import type { RenderState } from './render'
@@ -18,6 +19,18 @@ export interface LiveLayers {
   audio: Id | null
   background: Id | null
   lowerThird: Id | null
+  /** A video or image playing full screen, above the background. */
+  media: Id | null
+  /** Bottom first; several can be on at once. */
+  overlays: Id[]
+}
+
+/** Where the live video is: `position` seconds at `at` (epoch milliseconds), moving on from there unless paused. */
+export interface Playback {
+  startedAt: number
+  position: number
+  at: number
+  isPaused: boolean
 }
 
 /** When the live item and the service went live, for the timeline; epoch milliseconds. */
@@ -31,6 +44,7 @@ export interface Timing {
 export type InstantSource =
   | { type: 'song'; songId: Id; arrangementId?: Id }
   | { type: 'scripture'; ref: PassageRef; translations: string[]; versesPerSlide: number }
+  | { type: 'presentation'; presentationId: Id }
 
 export interface EngineState {
   /** Black screen: the audience screens show nothing until it is lifted or a slide is shown; the layers underneath are kept. */
@@ -39,6 +53,8 @@ export interface EngineState {
   outputsOff: string[]
   /** The item that was live when the operator picked the live background; for that item the pick beats its own and its theme's. */
   backgroundPickedFor: Id | null
+  /** Set while the media layer shows something. */
+  playback: Playback | null
   /** Sources of what Preview and Live show from the library, by their deck's item id; only those still referenced are kept. */
   instant: Record<Id, InstantSource>
   stage: StageState
@@ -69,6 +85,20 @@ export type Command =
   | { type: 'lowerThird.delete'; lowerThirdId: Id }
   | { type: 'screens.black'; isBlack: boolean }
   | { type: 'output.power'; outputId: string; isOn: boolean }
+  | { type: 'overlay.save'; overlay: Overlay }
+  | { type: 'overlay.delete'; overlayId: Id }
+  | { type: 'overlay.show'; overlayId: Id }
+  | { type: 'overlay.hide'; overlayId: Id }
+  /** Copies a file the operator picked into the library's media folder. */
+  | { type: 'media.import'; mediaId: Id; name: string; path: string; mediaType: 'image' | 'video'; duration: number | null }
+  | { type: 'media.update'; mediaId: Id; changes: Partial<MediaItem> }
+  | { type: 'media.delete'; mediaId: Id }
+  /** Plays a video, or shows an image, full screen on the media layer from its start. */
+  | { type: 'media.show'; mediaId: Id }
+  | { type: 'media.control'; action: 'play' | 'pause' | 'restart' }
+  | { type: 'presentation.create'; presentationId: Id; title: string; fromPresentationId?: Id }
+  | { type: 'presentation.delete'; presentationId: Id }
+  | { type: 'presentation.edit'; presentationId: Id; edit: PresentationEdit }
   | { type: 'audio.set'; audioCueId: Id }
   /** Locks the operator window to volunteer controls; a PIN must be given the first time, to set it. */
   | { type: 'volunteer.lock'; pin?: string }
@@ -138,6 +168,7 @@ export type ServiceEdit =
   | { type: 'service.removeItem'; itemId: Id }
   | { type: 'service.setTheme'; themeId: Id }
   | { type: 'service.addPassage'; itemId: Id; passageId: Id; afterItemId?: Id }
+  | { type: 'service.addPresentation'; itemId: Id; presentationId: Id; afterItemId?: Id }
   | { type: 'service.setTranslations'; translations: string[] }
   | { type: 'service.setDetails'; name?: string; date?: string; time?: string }
   | { type: 'service.setTeam'; team: ServiceTeam }
@@ -173,12 +204,22 @@ export type PassageEdit =
   | { type: 'passage.setVersesPerSlide'; versesPerSlide: number }
   | { type: 'passage.setSplitLong'; splitLong: boolean }
 
+export type PresentationEdit =
+  | { type: 'presentation.setTitle'; title: string }
+  | { type: 'presentation.setLooping'; isLooping: boolean }
+  /** At the end when `afterPageId` is left out. */
+  | { type: 'presentation.addPage'; page: Page; afterPageId?: Id }
+  /** Replaces the page with the same id. */
+  | { type: 'presentation.setPage'; page: Page }
+  | { type: 'presentation.removePage'; pageId: Id }
+  | { type: 'presentation.movePage'; pageId: Id; toIndex: number }
+
 export type ThemeEdit =
   | { type: 'theme.setName'; name: string }
   | { type: 'theme.setFill'; fill: BackgroundRender | null }
   | { type: 'theme.setBox'; role: ThemeBoxRole; style: BoxPatch }
 
-export type EditableKind = 'songs' | 'services' | 'themes' | 'passages' | 'templates'
+export type EditableKind = 'songs' | 'services' | 'themes' | 'passages' | 'templates' | 'presentations'
 
 export type LibraryQuery =
   | { type: 'library.search'; text: string; kind?: DocumentKind; limit?: number }
@@ -339,6 +380,10 @@ export const volunteerCommands = new Set<Command['type']>([
   'screens.black',
   'output.power',
   'lowerThird.set',
+  'overlay.show',
+  'overlay.hide',
+  'media.show',
+  'media.control',
   'live.next',
   'live.previous',
   'layer.clear',
@@ -384,7 +429,7 @@ export interface OperatorSnapshot {
   /** Decks shown from the library rather than the service, by their `itemId` in `state.instant`. */
   instant: Deck[]
   service: Service
-  library: { themes: Theme[]; templates: ServiceTemplate[]; backgrounds: Background[]; lowerThirds: LowerThird[]; audioCues: AudioCue[] }
+  library: { themes: Theme[]; templates: ServiceTemplate[]; backgrounds: Background[]; lowerThirds: LowerThird[]; audioCues: AudioCue[]; overlays: Overlay[]; media: MediaItem[] }
   bibles: BibleInfo[]
   /** Codes of Bibles that shipped with the app; only the others can be removed. */
   bundledBibles: string[]
