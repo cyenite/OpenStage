@@ -42,9 +42,28 @@ Installers for Windows (`.exe`), macOS (`.dmg`, Apple Silicon and Intel) and Lin
 `.AppImage`) are on the [releases page](https://github.com/cyenite/OpenStage/releases/latest). The website
 is at [cyenite.github.io/OpenStage](https://cyenite.github.io/OpenStage/).
 
-- The builds are not code-signed yet. Windows SmartScreen asks for "More info" then "Run anyway"; on macOS,
-  right-click the app and choose Open, or run `xattr -cr /Applications/OpenStage.app`.
+- The builds are not code-signed yet (see the [code signing policy](#code-signing-policy)). Windows
+  SmartScreen asks for "More info" then "Run anyway"; on macOS, right-click the app and choose Open, or run
+  `xattr -cr /Applications/OpenStage.app`.
 - The AppImage needs `libfuse2` (`sudo apt install libfuse2t64` on Ubuntu 24.04). The `.deb` does not.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org)
+
+OpenStage has applied to SignPath Foundation. Until the project is accepted, releases are not signed;
+v0.1.0 is unsigned.
+
+- Only the Windows app (`OpenStage.exe`) and its installer are signed, and only when they are built by the
+  release workflow on GitHub-hosted runners from this repository. Upstream files such as Electron's DLLs are
+  shipped as their authors published them.
+- Committers and reviewers: [cyenite](https://github.com/cyenite)
+- Approvers: [cyenite](https://github.com/cyenite). Every release is approved by hand in SignPath before it
+  is signed.
+
+Privacy: this program will not transfer any information to other networked systems unless specifically
+requested by the user or the person installing or operating it. It goes online only when the operator opens
+the Bible downloads (bible.com) or the song catalogue (Worship Leader).
 
 ## Releasing
 
@@ -58,6 +77,20 @@ git push origin v0.1.0
 The version comes from the tag (a tag with a hyphen, such as `v0.1.0-beta.1`, is marked as a pre-release).
 `pnpm --filter @openstage/desktop dist` packages for the current OS locally, into `apps/desktop/release`.
 The website in `website/` deploys to GitHub Pages on every push to `main` that changes it.
+
+### Windows signing with SignPath
+
+The release workflow signs the Windows build once these are set on the repository (Settings, Secrets and
+variables, Actions). Without them it releases the Windows installer unsigned, as before.
+
+- Variables: `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG`, `SIGNPATH_SIGNING_POLICY_SLUG`
+- Secret: `SIGNPATH_API_TOKEN`, for a SignPath user with submitter rights on the project
+
+In SignPath, link the GitHub.com trusted build system to the project and add two artifact configurations,
+with the slugs `app` and `installer`, from [.signpath/artifact-configurations](.signpath/artifact-configurations).
+SignPath cannot sign inside an NSIS installer, so the workflow signs `OpenStage.exe` first, builds the
+installer around it, then signs the installer. Each release therefore asks the approver twice; each request
+waits up to an hour.
 
 ### Operator keys
 

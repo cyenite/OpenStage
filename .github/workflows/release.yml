@@ -3,6 +3,12 @@ name: Release
 on:
   push:
     tags: ['v*.*.*']
+  # A dry run builds (and signs, once SignPath is set up) every package without publishing a release.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build, such as 0.2.0-test.1
+        required: true
 
 permissions: {}
 
@@ -16,25 +22,14 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: --linux
-          - os: windows-latest
-            platform: --win
           - os: macos-latest
             platform: --mac
     runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        shell: bash
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/prepare
         with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Take the version from the tag
-        working-directory: apps/desktop
-        run: npm pkg set version="${GITHUB_REF_NAME#v}"
+          version: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
       - name: Build and package
         working-directory: apps/desktop
         run: pnpm exec electron-vite build && pnpm exec electron-builder ${{ matrix.platform }} --publish never
@@ -44,12 +39,95 @@ jobs:
           path: |
             apps/desktop/release/*.AppImage
             apps/desktop/release/*.deb
-            apps/desktop/release/*.exe
             apps/desktop/release/*.dmg
           if-no-files-found: error
 
+  # SignPath cannot reach inside an NSIS installer, so the app is signed first, the installer is built
+  # around the signed app, and then the installer is signed. Each signing request waits for an approver.
+  # Without the SIGNPATH_* repository variables the installer is built and released unsigned.
+  windows:
+    permissions:
+      contents: read
+      actions: read
+    runs-on: windows-latest
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v7
+      - id: prepare
+        uses: ./.github/actions/prepare
+        with:
+          version: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
+      - name: Build the app
+        run: pnpm exec electron-vite build && pnpm exec electron-builder --win dir --publish never
+      - id: unsigned-app
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-app-unsigned
+          path: apps/desktop/release/win-unpacked
+          retention-days: 1
+      - name: Sign the app
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: app
+          github-artifact-id: ${{ steps.unsigned-app.outputs.artifact-id }}
+          parameters: |
+            windowsVersion: ${{ toJSON(steps.prepare.outputs.windows-version) }}
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: apps/desktop/release/win-signed
+      - name: Build the installer
+        run: |
+          app=release/win-unpacked
+          if [ -d release/win-signed ]; then app=release/win-signed; fi
+          pnpm exec electron-builder --win nsis --prepackaged "$app" --publish never
+      - id: unsigned-installer
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-installer-unsigned
+          path: apps/desktop/release/OpenStage-${{ steps.prepare.outputs.version }}-win-x64.exe
+          retention-days: 1
+      - name: Sign the installer
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.unsigned-installer.outputs.artifact-id }}
+          parameters: |
+            version: ${{ toJSON(steps.prepare.outputs.version) }}
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: apps/desktop/release/installer-signed
+      - id: installer
+        name: Pick the installer to release
+        env:
+          VERSION: ${{ steps.prepare.outputs.version }}
+        run: |
+          installer="release/OpenStage-$VERSION-win-x64.exe"
+          if [ -d release/installer-signed ]; then installer="release/installer-signed/OpenStage-$VERSION-win-x64.exe"; fi
+          test -f "$installer"
+          echo "path=apps/desktop/$installer" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages-windows
+          path: ${{ steps.installer.outputs.path }}
+          if-no-files-found: error
+
   publish:
-    needs: package
+    if: github.ref_type == 'tag'
+    needs: [package, windows]
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -62,5 +140,6 @@ jobs:
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           files: packages/*
+          body: 'Download the file for your system below. Read the [code signing policy](https://github.com/cyenite/OpenStage#code-signing-policy).'
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
