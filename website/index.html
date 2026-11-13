@@ -7,7 +7,7 @@
 <meta name="description" content="Free, open-source presentation software for churches: lyrics, scripture, lower thirds and a stage display, built for bilingual services and volunteer operators.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..700&family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..700&family=Schibsted+Grotesk:wght@400;500;600;700&family=Anton&family=JetBrains+Mono:wght@400;500;700&display=swap">
 <style>
 /* Layout: the page runs like a Sunday service. A left rail is the service order (the section in view is LIVE, the one after it NEXT); the opener is a projector you can actually drive. */
 :root {
@@ -39,9 +39,14 @@
   --slide-soft: #f6c47a;
   --paper-ink: #201b14;
   --void: #000000;
+  --hl-dawn: #ffd08a;
+  --hl-gold: #f5c86a;
+  --hl-beams: #ff6ad5;
+  --hl-embers: #ff9a4d;
 
   --display: 'Newsreader', Georgia, 'Times New Roman', serif;
   --body: 'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --stage: 'Anton', Impact, 'Arial Narrow', sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
@@ -396,13 +401,13 @@ h1 em, h2 em { font-style: italic; color: var(--amber); font-weight: 340; }
   text-shadow: 0 0.3cqw 1.4cqw rgba(0, 0, 0, 0.5);
 }
 .s-main { font-family: var(--display); font-weight: 440; font-size: 5.5cqw; line-height: 1.2; display: grid; gap: 0.15em; text-wrap: balance; }
-.s-second { font-family: var(--display); font-style: italic; font-weight: 380; font-size: 3.9cqw; color: var(--slide-soft); }
+.s-second { font-family: var(--display); font-style: italic; font-weight: 380; font-size: 3.9cqw; color: var(--hl); }
 .s-scripture .s-main { font-size: 4.5cqw; line-height: 1.3; font-weight: 400; max-width: 30ch; }
 .s-ref { position: absolute; right: 5cqw; bottom: 4.2cqw; font-family: var(--mono); font-size: 1.7cqw; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.8; text-shadow: none; }
 .sc { font-variant: small-caps; letter-spacing: 0.04em; }
-.s-giving { color: var(--paper-ink); text-shadow: none; gap: 1.4cqw; }
+.s-giving { gap: 1.8cqw; }
 .s-giving .s-main { font-size: 4.6cqw; font-weight: 480; }
-.give { display: grid; gap: 0.6cqw; justify-items: center; padding: 2.4cqw 4.4cqw; border: 0.25cqw solid currentColor; border-radius: 1.2cqw; }
+.give { display: grid; gap: 0.6cqw; justify-items: center; padding: 2.4cqw 4.4cqw; border: 0.25cqw solid var(--hl); border-radius: 1.2cqw; color: var(--hl); background: rgba(0, 0, 0, 0.35); text-shadow: 0 0 2.5cqw color-mix(in oklab, var(--hl) 45%, transparent); }
 .give span { font-family: var(--mono); font-size: 1.7cqw; letter-spacing: 0.18em; text-transform: uppercase; }
 .give b { font-family: var(--display); font-size: 6.6cqw; font-weight: 560; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .lt {
@@ -414,7 +419,10 @@ h1 em, h2 em { font-style: italic; color: var(--amber); font-weight: 340; }
   column-gap: 1.8cqw;
   align-items: stretch;
   padding: 1.6cqw 3cqw 1.6cqw 1.6cqw;
-  background: rgba(10, 9, 8, 0.86);
+  background: rgba(10, 9, 8, 0.6);
+  backdrop-filter: blur(1.2cqw);
+  -webkit-backdrop-filter: blur(1.2cqw);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 0.6cqw;
   color: var(--slide-ink);
   transform: translateX(-4cqw);
@@ -425,6 +433,66 @@ h1 em, h2 em { font-style: italic; color: var(--amber); font-weight: 340; }
 .lt::before { content: ""; grid-row: span 2; background: var(--lamp); border-radius: 0.3cqw; }
 .lt b { font-family: var(--body); font-weight: 650; font-size: 2.9cqw; line-height: 1.15; }
 .lt span { font-family: var(--mono); font-size: 1.6cqw; letter-spacing: 0.16em; text-transform: uppercase; color: var(--slide-soft); }
+.scr::after { content: ""; position: absolute; inset: 0; z-index: 5; pointer-events: none; background-image: radial-gradient(circle, transparent 55%, rgba(0, 0, 0, 0.34) 78%); background-size: 3px 3px; opacity: 0.5; }
+
+.s { --hl: var(--slide-soft); }
+.scr .s { transition: padding-bottom 0.5s cubic-bezier(.2,.8,.3,1); }
+.scr.has-lt .s { padding-bottom: 18cqw; }
+.t-dawn { --hl: var(--hl-dawn); }
+.t-gold { --hl: var(--hl-gold); }
+.t-count { --hl: var(--lamp); }
+.t-beams { --hl: var(--hl-beams); }
+.t-embers { --hl: var(--hl-embers); }
+.w { display: inline-block; }
+.s-shout { gap: 1.6cqw; }
+.s-shout .s-main { font-family: var(--stage); font-weight: 400; text-transform: uppercase; font-size: 12.5cqw; line-height: 0.95; letter-spacing: 0.01em; gap: 0; text-shadow: 0 0 4cqw color-mix(in oklab, var(--hl) 55%, transparent), 0 0.4cqw 1.5cqw rgba(0, 0, 0, 0.5); }
+.s-shout .s-main em { font-style: normal; color: var(--hl); }
+.s-shout .s-second { font-size: 4.6cqw; }
+.s-sub { font-family: var(--display); font-style: italic; font-size: 3.5cqw; line-height: 1.3; color: rgba(255, 255, 255, 0.86); max-width: 36ch; text-wrap: balance; }
+.scr .f.on .w { animation: word-in 0.8s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--i) * 65ms); }
+.scr .f.on .s-shout .s-main .w { animation-name: slam; animation-duration: 0.65s; animation-delay: calc(var(--i) * 120ms); }
+.scr .f.on .s-shout::before { content: ""; position: absolute; inset: 0; background: radial-gradient(60% 70% at 50% 45%, rgba(255, 255, 255, 0.5), transparent 70%); animation: flash 1s ease-out both; pointer-events: none; }
+@keyframes word-in { from { opacity: 0; filter: blur(0.8cqw); transform: translateY(1.4cqw); } }
+@keyframes slam { 0% { opacity: 0; transform: scale(1.4); filter: blur(1.2cqw); } 55% { opacity: 1; filter: blur(0); } 100% { transform: none; } }
+@keyframes flash { from { opacity: 1; } to { opacity: 0; } }
+
+.s-count { gap: 1.4cqw; }
+.s-count .ring { position: absolute; left: 50%; top: 50%; width: 52cqw; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; background: conic-gradient(var(--lamp) calc(var(--p, 1) * 1turn), rgba(255, 255, 255, 0.08) 0); -webkit-mask: radial-gradient(circle, transparent 66%, #000 67%, #000 68.5%, transparent 69.5%); mask: radial-gradient(circle, transparent 66%, #000 67%, #000 68.5%, transparent 69.5%); }
+.s-count .k { position: relative; font-family: var(--mono); font-size: 1.7cqw; letter-spacing: 0.4em; text-transform: uppercase; color: var(--hl); text-shadow: none; }
+.s-count .d { position: relative; font-family: var(--stage); font-weight: 400; font-size: 15cqw; line-height: 0.9; letter-spacing: 0.03em; text-shadow: 0 0 5cqw color-mix(in oklab, var(--lamp) 55%, transparent); }
+.s-count .m { position: relative; font-family: var(--display); font-style: italic; font-size: 2.8cqw; color: rgba(255, 255, 255, 0.8); }
+
+.bg-count { background-color: #050506; background-image: radial-gradient(45% 60% at 50% 50%, rgba(242, 169, 59, 0.2), transparent 70%), repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 6cqw), repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 6cqw); background-size: 100% 100%; }
+.scr .bg-count { animation: breathe 4s ease-in-out infinite; }
+@keyframes breathe { 50% { filter: brightness(1.4); } }
+
+.bg-beams { background-color: #04020a; background-image: radial-gradient(90% 55% at 50% 115%, #3a0f55 0%, transparent 70%), radial-gradient(60% 40% at 50% -10%, #1b2a6b 0%, transparent 70%); overflow: hidden; }
+.bg-beams i { position: absolute; top: -12%; left: var(--x); width: 20cqw; margin-left: -10cqw; height: 150%; transform-origin: 50% 0; transform: rotate(var(--a0)); background: linear-gradient(to bottom, var(--c), transparent 80%); clip-path: polygon(47% 0, 53% 0, 100% 100%, 0 100%); opacity: 0.55; mix-blend-mode: screen; filter: blur(0.5cqw); will-change: transform; }
+.scr .bg-beams i { animation: sweep var(--t) ease-in-out infinite alternate; }
+@keyframes sweep { from { transform: rotate(var(--a0)); } to { transform: rotate(var(--a1)); } }
+.bg-beams b { position: absolute; left: -10%; right: -10%; bottom: -10%; height: 50%; background: radial-gradient(60% 80% at 50% 100%, rgba(255, 92, 207, 0.3), transparent 70%); filter: blur(2cqw); }
+
+.bg-dawn { background-color: #120a2a; background-image: linear-gradient(to bottom, #0d0b2e 0%, #3a1d5c 40%, #b4492b 76%, #ffad57 100%); overflow: hidden; }
+.bg-dawn .rays { position: absolute; left: 50%; top: 95%; width: 170cqw; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; background: repeating-conic-gradient(rgba(255, 214, 150, 0.15) 0 5deg, transparent 5deg 15deg); -webkit-mask-image: radial-gradient(circle, #000, transparent 60%); mask-image: radial-gradient(circle, #000, transparent 60%); }
+.scr .bg-dawn .rays { animation: spin 90s linear infinite; }
+@keyframes spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+.bg-dawn .sun { position: absolute; left: 50%; top: 96%; width: 36cqw; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; background: radial-gradient(circle, #fff3d6 0%, #ffd27a 28%, rgba(255, 170, 80, 0.4) 52%, transparent 70%); }
+.scr .bg-dawn .sun { animation: rise 12s ease-out both; }
+@keyframes rise { from { top: 125%; } }
+
+.bg-embers { background-color: #0c0302; background-image: radial-gradient(80% 50% at 50% 112%, #b8360f 0%, rgba(120, 20, 10, 0.5) 45%, transparent 75%), radial-gradient(50% 40% at 50% 0%, #2a0a12 0%, transparent 70%); overflow: hidden; }
+.bg-embers i { position: absolute; left: var(--x); bottom: -1cqw; width: var(--s); height: var(--s); border-radius: 50%; background: #ffc27a; box-shadow: 0 0 1.2cqw 0.3cqw rgba(255, 120, 40, 0.8); opacity: 0.8; transform: translateY(calc(var(--y) * -1)); }
+.scr .bg-embers i { animation: ember var(--t) linear infinite; animation-delay: var(--d); }
+@keyframes ember { 0% { transform: translate(0, 0); opacity: 0; } 12% { opacity: 1; } 100% { transform: translate(var(--dx), -62cqw); opacity: 0; } }
+.bg-embers::after { content: ""; position: absolute; inset: 0; background: radial-gradient(70% 40% at 50% 108%, rgba(255, 150, 50, 0.4), transparent 70%); }
+.scr .bg-embers::after { animation: flicker 2.4s ease-in-out infinite; }
+@keyframes flicker { 50% { opacity: 0.45; } }
+
+.bg-gold { background-color: #0b0805; background-image: radial-gradient(60% 70% at 50% 45%, #3d2c10 0%, transparent 70%); overflow: hidden; }
+.bg-gold::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 35%, rgba(255, 220, 140, 0.16) 50%, transparent 65%); background-size: 250% 100%; background-position: 120% 0; }
+.scr .bg-gold::after { animation: sheen 6s ease-in-out infinite; }
+@keyframes sheen { to { background-position: -120% 0; } }
+
 .checker { position: absolute; inset: 0; background-color: #1a1a1d; background-image: linear-gradient(45deg, #222226 25%, transparent 25%, transparent 75%, #222226 75%), linear-gradient(45deg, #222226 25%, transparent 25%, transparent 75%, #222226 75%); background-size: 16px 16px; background-position: 0 0, 8px 8px; }
 
 .booth {
@@ -688,7 +756,7 @@ h1 em, h2 em { font-style: italic; color: var(--amber); font-weight: 340; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .beam, .scr .bg, .track, .kbd-hint .on i, .onair.black { animation: none !important; }
+  .beam, .scr .bg, .scr .bg *, .scr .bg::after, .scr .f.on .w, .scr .f.on .s-shout::before, .track, .kbd-hint .on i, .onair.black { animation: none !important; }
   .f, .lt, .box, .L-black { transition-duration: 0.01s !important; }
   .track { flex-wrap: wrap; width: auto; }
   .track[aria-hidden="true"] { display: none; }
@@ -775,7 +843,7 @@ h1 em, h2 em { font-style: italic; color: var(--amber); font-weight: 340; }
             <ol class="order" id="order"></ol>
           </div>
           <div class="pane">
-            <h3><span id="sel-title">Blessed Assurance</span><span id="sel-meta"></span></h3>
+            <h3><span id="sel-title">Countdown</span><span id="sel-meta"></span></h3>
             <div class="thumbs" id="thumbs"></div>
           </div>
           <div class="pane">
@@ -795,8 +863,6 @@ h1 em, h2 em { font-style: italic; color: var(--amber); font-weight: 340; }
           <button class="key" type="button" data-act="fwd"><kbd>&rarr;</kbd>Slide</button>
           <button class="key" type="button" data-act="up"><kbd>&uarr;</kbd></button>
           <button class="key" type="button" data-act="down"><kbd>&darr;</kbd>Cue item</button>
-          <button class="key" type="button" data-act="chorus"><kbd>C</kbd>Chorus</button>
-          <button class="key" type="button" data-act="verse2"><kbd>2</kbd>Verse 2</button>
           <button class="key" type="button" data-act="clearBg"><kbd>F1</kbd>Clear background</button>
           <button class="key" type="button" data-act="clearSlide"><kbd>F2</kbd>Clear slide</button>
           <button class="key" type="button" data-act="clearLt"><kbd>F3</kbd>Clear lower third</button>
@@ -931,7 +997,7 @@ h1 em, h2 em { font-style: italic; color: var(--amber); font-weight: 340; }
         <p class="eyebrow"><span class="time">10:55</span><span>Benediction</span></p>
         <h2 class="amen" id="h-end">Go in <span>peace.</span></h2>
         <div class="ctas"><a class="btn primary" href="https://github.com/cyenite/OpenStage/releases/latest">Download OpenStage</a><a class="btn" href="https://github.com/cyenite/OpenStage">Source on GitHub</a><a class="btn" href="#rig">Back to the rig</a></div>
-        <p class="small">OpenStage is in early development (version 0.0.0), made first for churches in Kenya and East Africa, with nothing in it that stops it working anywhere else. Licensed under the GNU GPL v3 or later. Demo content: Blessed Assurance by Fanny Crosby (1873) and Psalm 118:24 from the King James Version, both public domain. The paybill on the giving slide is an example.</p>
+        <p class="small">OpenStage is in early development (version 0.0.0), made first for churches in Kenya and East Africa, with nothing in it that stops it working anywhere else. Licensed under the GNU GPL v3 or later. Demo content: Holy, Holy, Holy by Reginald Heber (1826) and Psalm 118:24 from the King James Version, both public domain. The worship leader and the paybill on the giving slide are examples.</p>
       </div>
     </section>
   </main>
@@ -947,32 +1013,33 @@ h1 em, h2 em { font-style: italic; color: var(--amber); font-weight: 340; }
 <script>
 (() => {
   const ITEMS = [
-    { type: 'Slide', title: 'Welcome', theme: 'ember', slides: [
-      { label: 'Slide', main: ['Welcome home'], second: 'Karibu nyumbani' }
+    { type: 'Slide', title: 'Countdown', theme: 'count', slides: [{ label: 'Count', kind: 'count' }] },
+    { type: 'Slide', title: 'God is good', theme: 'beams', slides: [
+      { label: 'Call', kind: 'shout', main: ['God is <em>good</em>'], second: 'Mungu ni mwema' },
+      { label: 'Response', kind: 'shout', main: ['All the <em>time</em>'], second: 'Wakati wote' }
     ] },
-    { type: 'Song', title: 'Blessed Assurance', meta: 'Crosby, 1873', theme: 'night', slides: [
-      { label: 'V1', main: ['Blessed assurance, Jesus is mine!', 'O what a foretaste of glory divine!'] },
-      { label: 'V1', main: ['Heir of salvation, purchase of God,', 'Born of His Spirit, washed in His blood.'] },
-      { label: 'C', main: ['This is my story, this is my song,', 'Praising my Saviour all the day long.'] },
-      { label: 'V2', main: ['Perfect submission, perfect delight,', 'Visions of rapture now burst on my sight;'] },
-      { label: 'V2', main: ['Angels descending bring from above', 'Echoes of mercy, whispers of love.'] },
-      { label: 'C', main: ['This is my story, this is my song,', 'Praising my Saviour all the day long.'] }
+    { type: 'Scripture', title: 'Psalm 118:24', meta: 'KJV', theme: 'dawn', slides: [
+      { label: 'v24', kind: 'scripture', main: ['This is the day which the LORD hath made; we will rejoice and be glad in it.'], ref: 'Psalm 118:24 · KJV' }
     ] },
-    { type: 'Slide', title: 'God is good', theme: 'forest', slides: [
-      { label: 'Call', main: ['God is good'], second: 'Mungu ni mwema' },
-      { label: 'Response', main: ['All the time'], second: 'Wakati wote' }
+    { type: 'Lower third', title: 'Worship leader', lt: { name: 'Neema Achieng', role: 'Worship leader' }, slides: [{ label: 'L3' }] },
+    { type: 'Song', title: 'Holy, Holy, Holy', meta: 'Heber, 1826', theme: 'embers', slides: [
+      { label: 'V1', main: ['Holy, holy, holy! Lord God Almighty!', 'Early in the morning our song shall rise to Thee;'] },
+      { label: 'V1', kind: 'shout', main: ['Holy, holy,', '<em>holy!</em>'], sub: 'Merciful and mighty! God in three Persons, blessed Trinity!' }
     ] },
-    { type: 'Scripture', title: 'Psalm 118:24', meta: 'KJV', theme: 'night', slides: [
-      { label: 'v24', kind: 'scripture', main: ['This is the day which the <span class="sc">Lord</span> hath made; we will rejoice and be glad in it.'], ref: 'Psalm 118:24 · KJV' }
-    ] },
-    { type: 'Lower third', title: 'Guest speaker', lt: { name: 'Rev. Daniel Otieno', role: 'Guest speaker' }, slides: [{ label: 'L3' }] },
-    { type: 'Slide', title: 'Offering', theme: 'paper', slides: [
+    { type: 'Slide', title: 'Offering', theme: 'gold', slides: [
       { label: 'Giving', kind: 'giving', main: ['Sadaka · Offering'], giving: { paybill: '123 456', account: 'SADAKA' } }
     ] }
   ];
-  const LABELS = { C: 'chorus', V1: 'verse 1', V2: 'verse 2', L3: 'lower third' };
+  const LABELS = { C: 'chorus', V1: 'verse 1', V2: 'verse 2', L3: 'lower third', Count: 'countdown' };
 
-  const state = { live: { i: 1, s: 0 }, sel: 1, bg: 'night', isBgOn: true, isSlideOn: true, lt: null, isBlack: false };
+  const state = { live: { i: 0, s: 0 }, sel: 0, bg: 'count', isBgOn: true, isSlideOn: true, lt: null, isBlack: false };
+
+  const pad = (n) => String(n).padStart(2, '0');
+  const countFrom = Date.now();
+  function countdown() {
+    const left = 300 - (Math.floor((Date.now() - countFrom) / 1000) % 300);
+    return { text: pad(Math.floor(left / 60)) + ':' + pad(left % 60), part: left / 300 };
+  }
 
   const $ = (id) => document.getElementById(id);
   const rig = $('rig');
@@ -984,19 +1051,53 @@ h1 em, h2 em { font-style: italic; color: var(--amber); font-weight: 340; }
   const slideAt = (pos) => pos && ITEMS[pos.i].slides[pos.s];
   const labelOf = (slide) => LABELS[slide.label] || slide.label.toLowerCase();
 
+  const linesOf = (slide) => slide.kind === 'count' ? ['Countdown to the service'] : slide.main.concat(slide.sub || []).map(plain);
+
+  function words(line, at) {
+    return line.split(/(<em>.*?<\/em>)/).filter(Boolean).map((part) => {
+      const isEm = part.startsWith('<em>');
+      const tag = isEm ? 'em' : 'span';
+      return (isEm ? part.slice(4, -5) : part).split(/\s+/).filter(Boolean).map((word) => {
+        const html = word === 'LORD' ? '<span class="sc">Lord</span>' : word;
+        return '<' + tag + ' class="w" style="--i:' + at.n++ + '">' + html + '</' + tag + '>';
+      }).join(' ');
+    }).join(' ');
+  }
+
   function slideHTML(i, s) {
     const item = ITEMS[i];
     if (item.lt) return '';
     const slide = item.slides[s];
-    const kind = slide.kind ? ' s-' + slide.kind : '';
-    let html = '<div class="s' + kind + '"><div class="s-main">' + slide.main.map((l) => '<span>' + l + '</span>').join('') + '</div>';
-    if (slide.second) html += '<div class="s-second">' + slide.second + '</div>';
+    const cls = 's t-' + item.theme + (slide.kind ? ' s-' + slide.kind : '');
+    if (slide.kind === 'count') {
+      const c = countdown();
+      return '<div class="' + cls + '"><div class="ring" data-ring style="--p:' + c.part + '"></div><span class="k">The service starts in</span><b class="d" data-count>' + c.text + '</b><span class="m">Find a seat. Phones on silent.</span></div>';
+    }
+    const at = { n: 0 };
+    let html = '<div class="' + cls + '"><div class="s-main">' + slide.main.map((l) => '<span>' + words(l, at) + '</span>').join('') + '</div>';
+    if (slide.sub) html += '<div class="s-sub">' + words(slide.sub, at) + '</div>';
+    if (slide.second) html += '<div class="s-second">' + words(slide.second, at) + '</div>';
     if (slide.giving) html += '<div class="give"><span>Lipa na M-Pesa</span><b>Paybill ' + slide.giving.paybill + '</b><span>Account ' + slide.giving.account + '</span></div>';
     if (slide.ref) html += '<div class="s-ref">' + slide.ref + '</div>';
     return html + '</div>';
   }
   const ltHTML = (lt, isOn) => '<div class="lt' + (isOn ? ' on' : '') + '"><b>' + lt.name + '</b><span>' + lt.role + '</span></div>';
-  const bgHTML = (theme) => '<div class="bg bg-' + theme + '"></div>';
+  const rays = (list) => list.map((v) => '<i style="' + v + '"></i>').join('');
+  const seeded = (n, k) => ((Math.sin(n * 12.9898 + k * 78.233) * 43758.5453) % 1 + 1) % 1;
+  const RIGS = {
+    beams: () => rays([
+      '--x:12%;--a0:-28deg;--a1:14deg;--t:5.5s;--c:rgba(255,92,207,.9)',
+      '--x:31%;--a0:18deg;--a1:-22deg;--t:7s;--c:rgba(80,220,255,.85)',
+      '--x:50%;--a0:-12deg;--a1:12deg;--t:4.6s;--c:rgba(255,255,255,.75)',
+      '--x:69%;--a0:22deg;--a1:-18deg;--t:6.2s;--c:rgba(80,220,255,.85)',
+      '--x:88%;--a0:28deg;--a1:-12deg;--t:5s;--c:rgba(255,92,207,.9)'
+    ]) + '<b></b>',
+    dawn: () => '<i class="rays"></i><i class="sun"></i>',
+    embers: () => rays(Array.from({ length: 28 }, (_, n) =>
+      '--x:' + (seeded(n, 1) * 100).toFixed(1) + '%;--s:' + (0.3 + seeded(n, 2) * 0.7).toFixed(2) + 'cqw;--t:' + (4 + seeded(n, 3) * 5).toFixed(1) +
+      's;--d:-' + (seeded(n, 4) * 8).toFixed(1) + 's;--dx:' + ((seeded(n, 5) - 0.5) * 14).toFixed(1) + 'cqw;--y:' + (seeded(n, 6) * 50).toFixed(1) + 'cqw'))
+  };
+  const bgHTML = (theme) => '<div class="bg bg-' + theme + '">' + (RIGS[theme] ? RIGS[theme]() : '') + '</div>';
   function miniHTML(i, s) {
     const item = ITEMS[i];
     if (item.lt) return '<div class="checker"></div>' + ltHTML(item.lt, true);
@@ -1090,6 +1191,7 @@ h1 em, h2 em { font-style: italic; color: var(--amber); font-weight: 340; }
       ltKey = wantLt;
     }
     rig.classList.toggle('is-black', state.isBlack);
+    projector.classList.toggle('has-lt', state.lt !== null);
   }
 
   function onScreenText() {
@@ -1143,10 +1245,10 @@ h1 em, h2 em { font-style: italic; color: var(--amber); font-weight: 340; }
   function renderStage() {
     const sl = slideAt(state.live);
     const showing = state.isSlideOn && !isLt(state.live.i) && !state.isBlack;
-    $('stage-now').innerHTML = showing ? sl.main.map(plain).join('<br>') : '<span style="color:var(--booth-muted)">(clear)</span>';
+    $('stage-now').innerHTML = showing ? linesOf(sl).join('<br>') : '<span style="color:var(--booth-muted)">(clear)</span>';
     const cue = cuedPos();
     const nx = cue && slideAt(cue);
-    $('stage-next').textContent = !cue ? 'End of the service' : ITEMS[cue.i].lt ? 'Lower third: ' + ITEMS[cue.i].lt.name : nx.main.map(plain).join(' / ');
+    $('stage-next').textContent = !cue ? 'End of the service' : ITEMS[cue.i].lt ? 'Lower third: ' + ITEMS[cue.i].lt.name : linesOf(nx).join(' / ');
   }
   function renderLights() {
     const on = { bg: state.isBgOn, slide: state.isSlideOn && slideLayer.key !== 'off', lt: state.lt !== null, audio: false };
@@ -1209,9 +1311,11 @@ h1 em, h2 em { font-style: italic; color: var(--amber); font-weight: 340; }
 
   function tick() {
     const t = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
     const txt = pad(t.getHours()) + ':' + pad(t.getMinutes()) + ':' + pad(t.getSeconds());
     document.querySelectorAll('[data-clock]').forEach((el) => { el.textContent = txt; });
+    const c = countdown();
+    document.querySelectorAll('[data-count]').forEach((el) => { el.textContent = c.text; });
+    document.querySelectorAll('[data-ring]').forEach((el) => el.style.setProperty('--p', c.part));
   }
   tick();
   setInterval(tick, 1000);
