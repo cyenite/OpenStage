@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Id, OperatorSnapshot } from '@openstage/shared'
 import type { EditLibrary } from './LibraryTabs'
-import { ImportDialog } from './ImportDialog'
+import { filesSource, ImportDialog, type ImportSource } from './ImportDialog'
 import { NewSongDialog } from './NewSongDialog'
 import { ScriptureEditor } from './ScriptureEditor'
 import { ScriptureLibrary } from './ScriptureLibrary'
@@ -9,28 +9,32 @@ import { SongEditor } from './SongEditor'
 import { SongLibrary } from './SongLibrary'
 import { ThemeEditor } from './ThemeEditor'
 import { ThemeLibrary } from './ThemeLibrary'
+import { MediaDetail, MediaLibrary } from '../slides/MediaLibrary'
+import { SlideEditor } from '../slides/SlideEditor'
+import { SlidesLibrary } from '../slides/SlidesLibrary'
 
 export interface EditSelection {
   songId: Id | null
   themeId: Id | null
   passageId: Id | null
+  presentationId: Id | null
+  mediaId: Id | null
   library: EditLibrary
 }
 
 interface EditWorkspaceProps {
   snapshot: OperatorSnapshot
   selection: EditSelection
-  searchRequest: number
   onSelection: (selection: EditSelection) => void
+  onGetSongs: () => void
 }
 
 /** What is open lives in the app shell, so switching to Present and back keeps it open. */
-export function EditWorkspace({ snapshot, selection, searchRequest, onSelection }: EditWorkspaceProps) {
+export function EditWorkspace({ snapshot, selection, onSelection, onGetSongs }: EditWorkspaceProps) {
   const [isCreating, setCreating] = useState(false)
-  const [importFiles, setImportFiles] = useState<File[] | null>(null)
-  const importDialog = importFiles && (
-    <ImportDialog key={importFiles.map((f) => f.name).join('|')} files={importFiles} installedBibles={snapshot.bibles.map((b) => b.code)} onClose={() => setImportFiles(null)} />
-  )
+  const [importSource, setImportSource] = useState<ImportSource | null>(null)
+  const importFiles = (files: File[]) => setImportSource(filesSource(files))
+  const importDialog = importSource && <ImportDialog source={importSource} installedBibles={snapshot.bibles.map((b) => b.code)} onClose={() => setImportSource(null)} />
   const select = (change: Partial<EditSelection>) => onSelection({ ...selection, ...change })
   const openTheme = (themeId: Id) => select({ library: 'themes', themeId })
   const serviceSongIds = new Set(snapshot.service.items.flatMap((item) => (item.type === 'song' ? [item.songId] : [])))
@@ -45,7 +49,7 @@ export function EditWorkspace({ snapshot, selection, searchRequest, onSelection 
           selectedId={selection.passageId}
           onLibrary={(library) => select({ library })}
           onSelect={(passageId) => select({ passageId })}
-          onImport={setImportFiles}
+          onImport={importFiles}
         />
         <main className="main editor-main">
           {selection.passageId ? (
@@ -65,6 +69,48 @@ export function EditWorkspace({ snapshot, selection, searchRequest, onSelection 
           )}
         </main>
         {importDialog}
+      </>
+    )
+  }
+
+  if (selection.library === 'slides') {
+    return (
+      <>
+        <SlidesLibrary
+          service={snapshot.service}
+          revision={snapshot.libraryRevision}
+          selectedId={selection.presentationId}
+          onLibrary={(library) => select({ library })}
+          onSelect={(presentationId) => select({ presentationId })}
+        />
+        <main className="main editor-main slides-main">
+          {selection.presentationId ? (
+            <SlideEditor key={selection.presentationId} snapshot={snapshot} presentationId={selection.presentationId} onDeleted={() => select({ presentationId: null })} />
+          ) : (
+            <div className="editor-empty">
+              <h1>Slides</h1>
+              <p>Design pages for announcements, a countdown, giving or a sermon outline: text, clocks, QR codes, shapes, images, videos and scrolling messages over animated or video backgrounds. Make new slides, or open the Welcome loop on the left.</p>
+            </div>
+          )}
+        </main>
+      </>
+    )
+  }
+
+  if (selection.library === 'media') {
+    return (
+      <>
+        <MediaLibrary media={snapshot.library.media} selectedId={selection.mediaId} onLibrary={(library) => select({ library })} onSelect={(mediaId) => select({ mediaId })} />
+        <main className="main editor-main">
+          {selection.mediaId ? (
+            <MediaDetail key={selection.mediaId} snapshot={snapshot} mediaId={selection.mediaId} onDeleted={() => select({ mediaId: null })} />
+          ) : (
+            <div className="editor-empty">
+              <h1>Media</h1>
+              <p>Images and videos for page backgrounds, watermarks and full-screen playback. Add files with the button on the left or drop them there.</p>
+            </div>
+          )}
+        </main>
       </>
     )
   }
@@ -98,11 +144,11 @@ export function EditWorkspace({ snapshot, selection, searchRequest, onSelection 
       <SongLibrary
         revision={snapshot.libraryRevision}
         selectedId={songId}
-        searchRequest={searchRequest}
         serviceSongIds={serviceSongIds}
         onNew={() => setCreating(true)}
         onSelect={(id) => select({ songId: id })}
-        onImport={setImportFiles}
+        onImport={importFiles}
+        onGetSongs={onGetSongs}
         onLibrary={(library) => select({ library })}
       />
       <main className="main editor-main">

@@ -2,7 +2,11 @@ import {
   classicTheme,
   layoutSlide,
   lookup,
+  mediaUrl,
+  overlayRender,
   shortLabel,
+  type MediaRender,
+  type BackgroundRender,
   type StageRender,
   type StageSection,
   type Deck,
@@ -15,7 +19,7 @@ import {
 import { findDeck, findSlide } from './decks'
 
 export const outputs = [
-  { id: 'projector', name: 'Projector', kind: 'audience', layers: ['background', 'slide', 'lowerThird'], transitionMs: 300 },
+  { id: 'projector', name: 'Projector', kind: 'audience', layers: ['background', 'media', 'slide', 'lowerThird', 'overlays'], transitionMs: 300 },
   { id: 'stage', name: 'Stage', kind: 'stage', layers: ['slide'], transitionMs: 0 },
 ] as const satisfies readonly { id: string; name: string; kind: 'audience' | 'stage'; layers: readonly LayerKey[]; transitionMs: number }[]
 
@@ -63,19 +67,60 @@ export function resolveRender(
   slideRef: SlideRef | null = state.live.slide,
 ): Omit<RenderState, 'seq'> {
   const shows = (layer: LayerKey) => (profile.layers as readonly LayerKey[]).includes(layer)
-  const themes = context.library.themes
-  const slide = shows('slide') && profile.kind === 'audience' ? findSlide(context.decks, slideRef) : null
-  const theme = lookup(themes, findDeck(context.decks, slideRef)?.themeId) ?? lookup(themes, classicTheme.id) ?? classicTheme
-  const background = shows('background') && state.live.background ? context.library.backgrounds[state.live.background]?.render ?? null : null
-  const lowerThird = shows('lowerThird') && state.live.lowerThird ? context.library.lowerThirds[state.live.lowerThird] ?? null : null
+  const isBlank = profile.kind === 'audience' && state.isBlack
+  const slide = shows('slide') && profile.kind === 'audience' && !isBlank ? findSlide(context.decks, slideRef) : null
+  const lowerThird = shows('lowerThird') && !isBlank ? lookup(context.library.lowerThirds, state.live.lowerThird) ?? null : null
 
   return {
     aspect: 16 / 9,
     outputId: profile.id,
     transitionMs: profile.transitionMs,
-    background,
-    slide: slide && slideRef ? layoutSlide(theme, profile.id, slide, `${slideRef.itemId}#${slideRef.index}`) : null,
+    background: shows('background') && !isBlank ? backgroundFor(state, context, slideRef) : null,
+    slide: !slide || !slideRef ? null : slide.page ? { key: `${slideRef.itemId}#${slideRef.index}`, fill: null, boxes: [], page: slide.page } : { ...layoutSlide(themeFor(context, slideRef), profile.id, slide, `${slideRef.itemId}#${slideRef.index}`), fill: null },
     lowerThird: lowerThird ? { key: lowerThird.id, title: lowerThird.title, subtitle: lowerThird.subtitle } : null,
+    media: shows('media') && !isBlank ? mediaFor(state, context) : null,
+    overlays: shows('overlays') && !isBlank ? overlaysFor(state, context) : [],
     stage: profile.kind === 'stage' ? stageRender(state, context.decks, slideRef) : null,
   }
+}
+
+/** An output the operator switched off: nothing on it, so the projector shows black and the stage screen goes dark. */
+export function blankRender(profile: OutputProfile): Omit<RenderState, 'seq'> {
+  return { aspect: 16 / 9, outputId: profile.id, transitionMs: profile.transitionMs, background: null, slide: null, lowerThird: null, media: null, overlays: [], stage: null }
+}
+
+function themeFor(context: ResolveContext, slideRef: SlideRef | null) {
+  const themes = context.library.themes
+  return lookup(themes, findDeck(context.decks, slideRef)?.themeId) ?? lookup(themes, classicTheme.id) ?? classicTheme
+}
+
+/**
+ * Everything behind the words is drawn on the background layer, so it never fades with each slide and never covers them.
+ * A background the operator picked for the item on screen wins, then the item's own, then its theme's fill, then the
+ * operator's last pick. Clearing the background (F1) clears only the pick, so a light theme never ends up on black.
+ */
+export function backgroundFor(state: EngineState, context: ResolveContext, slideRef: SlideRef | null): BackgroundRender | null {
+  const pick = lookup(context.library.backgrounds, state.live.background)?.render ?? null
+  const deck = findDeck(context.decks, slideRef)
+  if (pick && (!deck || state.backgroundPickedFor === deck.itemId)) return pick
+  return lookup(context.library.backgrounds, deck?.backgroundId)?.render ?? (deck ? themeFor(context, slideRef).fill : null) ?? pick
+}
+
+function mediaFor(state: EngineState, context: ResolveContext): MediaRender | null {
+  const item = lookup(context.library.media, state.live.media)
+  const playback = state.playback
+  if (!item || !playback) return null
+  const { fit, volume, isMuted, ending, startAt, endAt, fadeMs } = item
+  return { key: `${item.id}@${playback.startedAt}`, type: item.type, src: mediaUrl(item.file), fit, volume, isMuted, ending, startAt, endAt, fadeMs, isPaused: playback.isPaused, position: playback.position, at: playback.at }
+}
+
+function overlaysFor(state: EngineState, context: ResolveContext) {
+  const src = (mediaId: string) => {
+    const item = lookup(context.library.media, mediaId)
+    return item ? mediaUrl(item.file) : null
+  }
+  return state.live.overlays.flatMap((id) => {
+    const overlay = lookup(context.library.overlays, id)
+    return overlay ? [overlayRender(overlay, src)] : []
+  })
 }

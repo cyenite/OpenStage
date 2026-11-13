@@ -21,7 +21,8 @@
   container-type: size;
 }
 
-.os-layer {
+.os-layer,
+.os-layer-slot {
   position: absolute;
   inset: 0;
 }
@@ -56,7 +57,8 @@
   bottom: 7%;
   max-width: 60%;
   padding: 1.6cqh 2.4cqh;
-  border-left: 0.8cqh solid #c481ff;
+  border-top: 0.6cqh solid #c481ff;
+  border-radius: 0.6cqh;
   background: rgba(14, 14, 16, 0.86);
   color: #fff;
   font-family: 'Inter Variable', Inter, 'Segoe UI', system-ui, sans-serif;
@@ -280,4 +282,357 @@
 
 .os-stage-screen[hidden] {
   display: none;
+}
+
+/* Designed pages: every element is placed in fractions of the screen and sized in cqh, so pages scale to any output. */
+.os-page,
+.os-page-background,
+.os-fill {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.os-page {
+  overflow: hidden;
+}
+
+.os-page-background {
+  overflow: hidden;
+}
+
+.os-el {
+  position: absolute;
+  box-sizing: border-box;
+  overflow: hidden;
+  transform-origin: center;
+}
+
+.os-el.os-box {
+  padding: 0 1cqh;
+}
+
+.os-el-qr,
+.os-el-image,
+.os-el-video {
+  overflow: hidden;
+}
+
+.os-el-ticker {
+  justify-content: center;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.os-ticker-box {
+  align-items: stretch !important;
+}
+
+.os-track {
+  display: flex;
+  width: max-content;
+  white-space: nowrap;
+}
+
+.os-track-copy {
+  flex: none;
+  padding-right: var(--gap, 0);
+}
+
+.os-track.is-moving {
+  animation: os-ticker var(--ticker-seconds, 20s) linear infinite;
+}
+
+.os-track.is-moving-right {
+  animation: os-ticker var(--ticker-seconds, 20s) linear infinite reverse;
+}
+
+@keyframes os-ticker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.os-enter {
+  animation-duration: var(--enter-ms, 600ms);
+  animation-delay: var(--enter-delay, 0ms);
+  animation-fill-mode: both;
+  animation-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.os-enter-fade { animation-name: os-in-fade; }
+.os-enter-rise { animation-name: os-in-rise; }
+.os-enter-drop { animation-name: os-in-drop; }
+.os-enter-zoom { animation-name: os-in-zoom; }
+.os-enter-slideLeft { animation-name: os-in-left; }
+.os-enter-slideRight { animation-name: os-in-right; }
+.os-enter-blur { animation-name: os-in-blur; }
+.os-enter-pulse { animation-name: os-pulse; animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
+
+@keyframes os-in-fade { from { opacity: 0; } }
+@keyframes os-in-rise { from { opacity: 0; translate: 0 6cqh; } }
+@keyframes os-in-drop { from { opacity: 0; translate: 0 -6cqh; } }
+@keyframes os-in-zoom { from { opacity: 0; scale: 0.8; } }
+@keyframes os-in-left { from { opacity: 0; translate: 12cqw 0; } }
+@keyframes os-in-right { from { opacity: 0; translate: -12cqw 0; } }
+@keyframes os-in-blur { from { opacity: 0; filter: blur(2cqh); } }
+@keyframes os-pulse { 50% { scale: 1.05; } }
+
+.is-static .os-enter,
+.is-static .os-anim *,
+.is-static .os-track,
+.os-anim.is-static * {
+  animation: none !important;
+}
+
+/* Animated backgrounds: CSS only, so they cost little on a modest PC. --speed scales every duration. */
+.os-anim {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--c1, #111);
+}
+
+.os-anim-aurora .os-anim-blob,
+.os-anim-waves .os-anim-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(8cqh);
+  opacity: 0.85;
+}
+
+.os-anim-aurora .os-anim-blob {
+  width: 70%;
+  height: 90%;
+  animation: os-aurora calc(18s / var(--speed, 1)) ease-in-out infinite alternate;
+}
+
+.os-anim-aurora .os-anim-blob-1 { left: -10%; top: -20%; background: var(--c2, #3a1c4a); }
+.os-anim-aurora .os-anim-blob-2 { right: -15%; top: 10%; background: var(--c3, #0e3b3a); animation-delay: calc(-6s / var(--speed, 1)); }
+.os-anim-aurora .os-anim-blob-3 { left: 20%; bottom: -40%; background: var(--c4, var(--c2, #3a1c4a)); opacity: 0.5; animation-delay: calc(-12s / var(--speed, 1)); }
+
+@keyframes os-aurora {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(12%, 8%) scale(1.15); }
+  100% { transform: translate(-8%, 14%) scale(0.95); }
+}
+
+.os-anim-drift {
+  background: linear-gradient(120deg, var(--c1, #111), var(--c2, #333), var(--c3, #222), var(--c1, #111));
+  background-size: 300% 300%;
+  animation: os-drift calc(24s / var(--speed, 1)) ease-in-out infinite alternate;
+}
+
+@keyframes os-drift {
+  from { background-position: 0% 50%; }
+  to { background-position: 100% 50%; }
+}
+
+.os-anim-waves .os-anim-blob {
+  width: 180%;
+  height: 120%;
+  left: -40%;
+  border-radius: 43%;
+  filter: none;
+  opacity: 0.35;
+  animation: os-spin calc(26s / var(--speed, 1)) linear infinite;
+}
+
+.os-anim-waves .os-anim-blob-1 { top: 55%; background: var(--c2, #3a1c4a); }
+.os-anim-waves .os-anim-blob-2 { top: 62%; background: var(--c3, #0e3b3a); animation-duration: calc(34s / var(--speed, 1)); }
+.os-anim-waves .os-anim-blob-3 { top: 70%; background: var(--c2, #3a1c4a); animation-duration: calc(44s / var(--speed, 1)); animation-direction: reverse; }
+
+@keyframes os-spin {
+  to { transform: rotate(360deg); }
+}
+
+.os-anim-rays .os-anim-rays {
+  position: absolute;
+  left: 50%;
+  top: -60%;
+  width: 220%;
+  aspect-ratio: 1;
+  translate: -50% 0;
+  background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--c2, #fff) 35%, transparent) 0deg 6deg, transparent 6deg 18deg);
+  mask-image: radial-gradient(circle, #000 0%, transparent 60%);
+  animation: os-spin calc(80s / var(--speed, 1)) linear infinite;
+}
+
+.os-anim-dot {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: calc(var(--s) * 1cqh);
+  height: calc(var(--s) * 1cqh);
+  border-radius: 50%;
+  background: var(--tint, #fff);
+}
+
+.os-anim-bokeh .os-anim-dot {
+  width: calc(var(--s) * 9cqh);
+  height: calc(var(--s) * 9cqh);
+  filter: blur(1.5cqh);
+  opacity: 0.35;
+  animation: os-float calc(22s * var(--d) / var(--speed, 1)) ease-in-out var(--delay) infinite alternate;
+}
+
+@keyframes os-float {
+  to { transform: translate(6cqw, -8cqh) scale(1.2); }
+}
+
+.os-anim-particles .os-anim-dot {
+  top: 105%;
+  opacity: 0.7;
+  animation: os-rise calc(16s * var(--d) / var(--speed, 1)) linear var(--delay) infinite;
+}
+
+@keyframes os-rise {
+  from { transform: translateY(0); opacity: 0; }
+  10% { opacity: 0.8; }
+  to { transform: translateY(-115cqh); opacity: 0; }
+}
+
+.os-anim-stars {
+  background: radial-gradient(ellipse at 50% 120%, var(--c2, #1b2b4b), var(--c1, #050510) 70%);
+}
+
+.os-anim-stars .os-anim-dot {
+  width: calc(var(--s) * 0.35cqh);
+  height: calc(var(--s) * 0.35cqh);
+  background: #fff;
+  animation: os-twinkle calc(4s * var(--d) / var(--speed, 1)) ease-in-out var(--delay) infinite alternate;
+}
+
+@keyframes os-twinkle {
+  from { opacity: 0.15; }
+  to { opacity: 1; }
+}
+
+/* The media layer: one video or image, full screen. */
+.os-media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+
+/* Overlays sit over everything, each placed by its own settings; sizes are fractions of the screen height. */
+.os-overlay {
+  position: absolute;
+  pointer-events: none;
+  animation: os-in-fade 400ms ease both;
+  transition: opacity 500ms ease, translate 500ms ease;
+}
+
+.os-overlay.is-leaving {
+  opacity: 0 !important;
+}
+
+.os-overlay-ticker {
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  height: calc(var(--size) * 190cqh);
+  font-size: calc(var(--size) * 100cqh);
+  font-weight: 600;
+  overflow: hidden;
+}
+
+.os-overlay-ticker.is-bottom { bottom: 0; }
+.os-overlay-ticker.is-top { top: 0; }
+
+.os-overlay-label {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  flex: none;
+  padding: 0 2cqh;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #111;
+}
+
+.os-overlay-ticker-window {
+  flex: 1;
+  overflow: hidden;
+  padding-left: 2cqh;
+}
+
+.os-overlay-banner {
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  font-size: calc(var(--size) * 100cqh);
+}
+
+.os-overlay-banner.is-top { top: 6cqh; }
+.os-overlay-banner.is-middle { top: 50%; translate: 0 -50%; }
+.os-overlay-banner.is-bottom { bottom: 8cqh; }
+
+.os-banner-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.2cqh;
+  padding: 2cqh 5cqh;
+  text-align: center;
+}
+
+.os-overlay-banner.is-bar .os-banner-box { width: 100%; }
+.os-overlay-banner.is-card .os-banner-box { border-radius: 1.4cqh; max-width: 80%; }
+.os-overlay-banner.is-minimal .os-banner-box { text-shadow: 0 0.3cqh 1.2cqh rgba(0, 0, 0, 0.7); }
+
+.os-banner-accent {
+  width: 8cqh;
+  height: 0.6cqh;
+  border-radius: 0.3cqh;
+  background: var(--accent);
+}
+
+.os-banner-title {
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.os-banner-subtitle {
+  margin-top: 0.6cqh;
+  font-size: 0.55em;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.os-overlay-banner.motion-slide { animation: os-in-rise 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.os-overlay-banner.motion-wipe .os-banner-box { animation: os-wipe 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+@keyframes os-wipe {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+.os-overlay-watermark,
+.os-overlay-clock {
+  font-size: calc(var(--size) * 100cqh);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.os-overlay-watermark { margin: calc(var(--margin, 0.03) * 100cqh); }
+.os-overlay-clock { margin: 3cqh; padding: 1cqh 1.6cqh; border-radius: 1cqh; font-variant-numeric: tabular-nums; }
+
+.os-overlay.is-topLeft { top: 0; left: 0; }
+.os-overlay.is-topRight { top: 0; right: 0; }
+.os-overlay.is-bottomLeft { bottom: 0; left: 0; }
+.os-overlay.is-bottomRight { bottom: 0; right: 0; }
+
+.os-watermark-image {
+  display: block;
+  height: calc(var(--size) * 100cqh);
+  width: auto;
+}
+
+.is-static .os-overlay {
+  animation: none;
 }

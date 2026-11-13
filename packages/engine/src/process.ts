@@ -1,8 +1,12 @@
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { ClientMessage, EngineConnect, EngineMessage, EngineState } from '@openstage/shared'
-import { loadBibles, saveBible } from './bibles/store'
-import { Engine, type ClientPort } from './engine'
+import type { ClientMessage, EngineConnect, EngineMessage, EngineState, Library } from '@openstage/shared'
+import { BibleComClient } from './bibles/biblecom'
+import { loadBibles, removeBible, saveBible } from './bibles/store'
+import { Engine, type ClientPort, type EngineSettings } from './engine'
 import { atomicWriteJson, CoalescingWriter, loadLiveState } from './persistence'
+import { loadSongPacks, songsToInstall } from './song-packs'
+import { WorshipLeaderClient } from './import/worship-leader'
 import { starterLibrary } from './starter-library'
 import { DocumentStore } from './store/document-store'
 import { LibraryIndex } from './store/library-index'
@@ -29,18 +33,27 @@ export async function startEngineProcess(): Promise<void> {
   const usage = new UsageLog(join(dataDir, 'usage.jsonl'), report('song usage'))
 
   await store.saveAll(datedStarter(new Date()), await store.missingKinds())
-  const { library, problems } = await store.loadAll()
+  const { library: loaded, problems } = await store.loadAll()
   for (const problem of problems) console.warn('[engine] library:', problem)
+  const library = await installSongPacks(loaded, store, argument('songs-dir'), join(dataDir, 'song-packs.json'))
   const index = new LibraryIndex()
   index.rebuild(library)
   for (const entry of await usage.read()) index.recordUsage(entry)
-  const bibleFolders = [argument('bibles-dir'), join(dataDir, 'bibles')].filter((f): f is string => !!f)
-  const bibles = await loadBibles(bibleFolders, (file, error) => console.warn('[engine] could not read Bible', file, error))
+  const bundledFolder = argument('bibles-dir')
+  const userBibles = join(dataDir, 'bibles')
+  const onBadBible = (file: string, error: unknown) => console.warn('[engine] could not read Bible', file, error)
+  const bundled = bundledFolder ? await loadBibles([bundledFolder], onBadBible) : []
+  const bibles = await loadBibles([...(bundledFolder ? [bundledFolder] : []), userBibles], onBadBible)
   const restored = await loadLiveState(statePath, library, bibles)
+  const settingsPath = join(dataDir, 'settings.json')
+  const settings = await loadSettings(settingsPath)
+  const settingsSaver = new CoalescingWriter<EngineSettings>((value) => atomicWriteJson(settingsPath, value), report('settings'))
 
   const engine = new Engine({
     index,
     bibles,
+    settings,
+    onSettingsChange: (value) => settingsSaver.save(value),
     library,
     restored,
     onStateChange: (state) => saver.save(state),
@@ -53,8 +66,16 @@ export async function startEngineProcess(): Promise<void> {
       index.upsert(kind, document)
     },
     onBibleImported: (bible) => {
-      saveBible(join(dataDir, 'bibles'), bible).catch(report('an imported Bible'))
+      saveBible(userBibles, bible).catch(report('an imported Bible'))
     },
+    onBibleRemoved: (code) => {
+      removeBible(userBibles, code).catch(report('a removed Bible'))
+    },
+    bundledBibles: bundled.map((b) => b.code),
+    // Tests set this so they never reach bible.com or a song catalogue.
+    bibleCom: process.env['OPENSTAGE_OFFLINE'] ? undefined : { client: new BibleComClient(), stagingDir: join(dataDir, 'bible-downloads') },
+    songSources: process.env['OPENSTAGE_OFFLINE'] ? {} : { worshipLeader: new WorshipLeaderClient() },
+    mediaDir: join(dataDir, 'library', 'media-files'),
     onDocumentRemove: (kind, id) => {
       index.remove(kind, id)
       store.remove(kind, id).catch(report('a removed document'))
@@ -64,12 +85,41 @@ export async function startEngineProcess(): Promise<void> {
   parentPort.on('message', (event) => {
     const message = event.data as EngineConnect | { type: 'shutdown' }
     if (message.type === 'shutdown') {
-      void Promise.all([saver.flush(), store.flush(), usage.flush()]).then(() => process.exit(0))
+      void Promise.all([saver.flush(), store.flush(), usage.flush(), settingsSaver.flush()]).then(() => process.exit(0))
     } else if (message.type === 'connect' && event.ports[0]) {
       engine.connect(wrap(event.ports[0]), message.hello)
     }
   })
   parentPort.postMessage({ type: 'ready', restored: !!restored })
+}
+
+/** A settings file that does not read leaves the window unlocked with no PIN, rather than locked with no way in. */
+async function loadSettings(path: string): Promise<EngineSettings> {
+  try {
+    const raw = JSON.parse(await readFile(path, 'utf8')) as Partial<EngineSettings>
+    const hasPin = typeof raw.pinHash === 'string' && typeof raw.pinSalt === 'string'
+    return hasPin ? { pinHash: raw.pinHash!, pinSalt: raw.pinSalt!, isLocked: raw.isLocked === true } : { isLocked: false }
+  } catch {
+    return { isLocked: false }
+  }
+}
+
+/** Adds each bundled song pack's songs the first time this library sees that pack. */
+async function installSongPacks(library: Library, store: DocumentStore, folder: string | undefined, recordPath: string): Promise<Library> {
+  if (!folder) return library
+  const installed: string[] = await readFile(recordPath, 'utf8').then((text) => JSON.parse(text), () => [])
+  const packs = await loadSongPacks(folder, (file, error) => console.warn('[engine] could not read song pack', file, error))
+  const fresh = packs.filter((pack) => !installed.includes(pack.id))
+  if (fresh.length === 0) return library
+  let next = library
+  for (const pack of fresh) {
+    const songs = songsToInstall(pack, next)
+    for (const song of songs) store.save('songs', song)
+    next = { ...next, songs: { ...next.songs, ...Object.fromEntries(songs.map((s) => [s.id, s])) } }
+  }
+  await store.flush()
+  await atomicWriteJson(recordPath, [...installed, ...fresh.map((p) => p.id)])
+  return next
 }
 
 /** The starter service lands on the coming Sunday, so a new calendar has something on it. */

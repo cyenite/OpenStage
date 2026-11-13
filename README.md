@@ -26,20 +26,52 @@ pnpm test:e2e     # builds, then drives the real app with Playwright
 On Linux, run the end-to-end tests off screen with `xvfb-run -a pnpm test:e2e` (unset `WAYLAND_DISPLAY`
 first on a Wayland desktop, or Electron opens on your screen).
 
-Output windows go frameless over each extra display (projector first, then stage). With only one display
-they open as small windows on the right of the screen. `OPENSTAGE_WINDOWED_OUTPUTS=1` forces windowed
-outputs even when displays are attached; `OPENSTAGE_USER_DATA=<dir>` points the app at a different data
-folder.
+Output windows go frameless over each screen other than the operator's (projector first, then stage), and
+follow screens as they are plugged in or pulled out. "Shows on" under each screen in Present picks a
+particular screen or a window, remembered per machine. With no spare screen they open as small windows
+beside the operator. `OPENSTAGE_WINDOWED_OUTPUTS=1` forces windowed outputs even when displays are
+attached; `OPENSTAGE_USER_DATA=<dir>` points the app at a different data folder.
+
+On a Linux Wayland desktop the app runs under XWayland (`--ozone-platform=x11`), because Wayland does not
+let an app put its windows on a chosen screen. The scripts pass the flag; any other launch restarts itself
+with it. Pass `--ozone-platform=wayland` to stay on Wayland.
+
+## Download
+
+Installers for Windows (`.exe`), macOS (`.dmg`, Apple Silicon and Intel) and Linux (`.deb` and
+`.AppImage`) are on the [releases page](https://github.com/cyenite/OpenStage/releases/latest). The website
+is at [cyenite.github.io/OpenStage](https://cyenite.github.io/OpenStage/).
+
+- The builds are not code-signed yet. Windows SmartScreen asks for "More info" then "Run anyway"; on macOS,
+  right-click the app and choose Open, or run `xattr -cr /Applications/OpenStage.app`.
+- The AppImage needs `libfuse2` (`sudo apt install libfuse2t64` on Ubuntu 24.04). The `.deb` does not.
+
+## Releasing
+
+Push a version tag and GitHub Actions builds every installer and publishes a release with them:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The version comes from the tag (a tag with a hyphen, such as `v0.1.0-beta.1`, is marked as a pre-release).
+`pnpm --filter @openstage/desktop dist` packages for the current OS locally, into `apps/desktop/release`.
+The website in `website/` deploys to GitHub Pages on every push to `main` that changes it.
 
 ### Operator keys
 
 | Key | Action |
 |---|---|
-| Space | Send Preview to Live, queue the following slide |
-| → / PageDown, ← / PageUp | Next / previous live slide |
-| F1, F2, F3, F4 | Clear background, slides, lower third, audio |
-| Esc | Clear everything (black screen) |
-| Double-click a slide | Send it straight to Live |
+| Click a slide | Show it now |
+| Space | Show what is cued: the following slide, or what was just picked in the order or the Library |
+| → / PageDown, ← / PageUp | Next / previous slide, running on into the next item |
+| ↑ / ↓ | Select the previous / next service item (the screens do not change) |
+| C, 1-9, B, P, E, T, I | Jump to the chorus, verse n, bridge, pre-chorus, ending, tag or intro of the song on screen |
+| F1, F2, F3, F4 | Clear the background pick, slides, lower third, audio |
+| F5, F6 | Stop the media layer, take every overlay off |
+| Esc | Black screen; press again to bring back what was there |
+| / or Ctrl+L (Cmd+L) | Open the Library drawer with its search focused |
 
 ## How it is built
 
@@ -73,8 +105,16 @@ folder.
 | `packages/output` | `OutputSurface`, the DOM renderer for a `RenderState`, with crossfades and text fit |
 | `packages/shared` | Types shared by everything: library model, layers, `RenderState`, wire protocol |
 | `apps/mobile` | Flutter remote, stage and congregation apps (placeholders until phase 2) |
+| `website` | The homepage: one self-contained `index.html`, no build step |
 | `e2e` | Playwright tests that launch the real Electron app |
 | `docs` | Research, blueprint and plans |
+
+## Volunteer mode and rehearsal
+
+The lock button in the title bar sets a PIN and locks the window to a simple screen: the service, what is
+on screen, what comes next, and big Back, Next and Clear buttons. Nothing can be edited or deleted until
+someone unlocks it with the PIN, and the lock survives a restart. Rehearse runs the service off-air: the
+screens keep what they showed, and stopping puts everything back.
 
 ## Importing
 

@@ -1,0 +1,1382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>OpenStage</title>
+<meta name="description" content="Free, open-source presentation software for churches: lyrics, scripture, lower thirds and a stage display, built for bilingual services and volunteer operators.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..700&family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+/* Layout: the page runs like a Sunday service. A left rail is the service order (the section in view is LIVE, the one after it NEXT); the opener is a projector you can actually drive. */
+:root {
+  --wall: #e8eae4;
+  --wall-2: #dde0d8;
+  --ink: #17181a;
+  --ink-soft: #3a3d42;
+  --muted: #5a5e63;
+  --line: rgba(23, 24, 26, 0.13);
+  --amber: #9a5800;
+  --live: #c4252b;
+  --cue: #1d7a43;
+  --beam: 0.42;
+  --veil: rgba(232, 234, 228, 0.84);
+
+  --lamp: #f2a93b;
+  --booth: #161618;
+  --booth-2: #1c1c1f;
+  --booth-3: #0f0f11;
+  --booth-key: #2a2a2e;
+  --booth-line: rgba(255, 255, 255, 0.08);
+  --booth-fg: #f2f2f3;
+  --booth-muted: #a1a1a8;
+  --tally: #ff5a5f;
+  --tally-text: #ff8a8e;
+  --preview: #34c77b;
+  --light-off: #4a4a4f;
+  --slide-ink: #ffffff;
+  --slide-soft: #f6c47a;
+  --paper-ink: #201b14;
+  --void: #000000;
+
+  --display: 'Newsreader', Georgia, 'Times New Roman', serif;
+  --body: 'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --wall: #0d0c0b;
+    --wall-2: #161412;
+    --ink: #f1ede6;
+    --ink-soft: #cfc9bf;
+    --muted: #9b958b;
+    --line: rgba(241, 237, 230, 0.1);
+    --amber: #f2a93b;
+    --live: #ff5a5f;
+    --cue: #34c77b;
+    --beam: 1;
+    --veil: rgba(13, 12, 11, 0.82);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --wall: #0d0c0b;
+  --wall-2: #161412;
+  --ink: #f1ede6;
+  --ink-soft: #cfc9bf;
+  --muted: #9b958b;
+  --line: rgba(241, 237, 230, 0.1);
+  --amber: #f2a93b;
+  --live: #ff5a5f;
+  --cue: #34c77b;
+  --beam: 1;
+  --veil: rgba(13, 12, 11, 0.82);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+body {
+  margin: 0;
+  background: var(--wall);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.7s ease, color 0.7s ease;
+  overflow-x: hidden;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  height: env(safe-area-inset-top, 0px);
+  z-index: 10;
+  background: var(--wall);
+}
+a { color: inherit; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.top {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 9;
+  background: var(--veil);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line);
+  transition: background-color 0.7s ease;
+}
+.top-in {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding-block: 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  font-family: var(--display);
+  font-size: 24px;
+  font-weight: 560;
+  letter-spacing: -0.02em;
+}
+.tally {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--live);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--live) 22%, transparent), 0 0 14px var(--live);
+}
+.readout {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.readout b { font-weight: 500; color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
+.chip { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; padding: 2px 6px; border-radius: 4px; }
+.chip.live { color: var(--live); background: color-mix(in oklab, var(--live) 14%, transparent); }
+.chip.next { color: var(--cue); background: color-mix(in oklab, var(--cue) 14%, transparent); }
+.readout .nx { display: none; }
+@media (max-width: 519px) { .readout { visibility: hidden; } }
+.lights {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.lights:hover { border-color: var(--amber); }
+.slider {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--wall-2);
+  border: 1px solid var(--line);
+}
+.slider::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 10px var(--lamp);
+  transition: transform 0.35s cubic-bezier(.3,1.4,.5,1);
+}
+.lights[aria-pressed="true"] .slider::after { transform: translateX(14px); }
+.lights .state { color: var(--muted); font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+.page {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 56px;
+}
+.rail { display: none; }
+@media (min-width: 1100px) {
+  .page { grid-template-columns: 196px minmax(0, 1fr); }
+  .rail { display: block; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 72px); align-self: start; padding-block: 44px; }
+  .readout { visibility: hidden; }
+}
+@media (min-width: 640px) { .readout .nx { display: inline-flex; gap: 10px; align-items: center; } }
+.rail-h {
+  margin: 0 0 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.rail ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.rail a {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: background-color 0.3s, border-color 0.3s;
+}
+.rail a:hover { background: color-mix(in oklab, var(--ink) 5%, transparent); }
+.rail .t { grid-row: span 2; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-top: 2px; font-variant-numeric: tabular-nums; }
+.rail .n { font-weight: 600; font-size: 14.5px; line-height: 1.3; }
+.rail .k { font-size: 12px; color: var(--muted); line-height: 1.4; display: flex; gap: 6px; align-items: center; }
+.rail .k .chip { display: none; }
+.rail a.is-live { border-color: color-mix(in oklab, var(--live) 45%, transparent); background: color-mix(in oklab, var(--live) 7%, transparent); }
+.rail a.is-live .chip.live, .rail a.is-next .chip.next { display: inline; }
+.rail a.is-next { border-color: color-mix(in oklab, var(--cue) 35%, transparent); }
+.rail-foot { margin: 22px 0 0; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+
+main { min-width: 0; }
+.sec { padding-block: clamp(72px, 10vw, 140px); border-top: 1px solid var(--line); }
+.sec:first-child { border-top: 0; padding-top: clamp(28px, 5vw, 56px); }
+.eyebrow {
+  margin: 0 0 18px;
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.eyebrow .time { color: var(--amber); font-variant-numeric: tabular-nums; }
+.eyebrow .off { color: var(--live); }
+h1, h2 { font-family: var(--display); font-weight: 380; letter-spacing: -0.03em; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(3rem, 8.4vw, 7.6rem); line-height: 0.9; }
+h2 { font-size: clamp(2.3rem, 5.2vw, 4.4rem); line-height: 0.98; }
+h1 em, h2 em { font-style: italic; color: var(--amber); font-weight: 340; }
+:root[data-theme="dark"] h1 em { text-shadow: 0 0 40px color-mix(in oklab, var(--lamp) 45%, transparent); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) h1 em { text-shadow: 0 0 40px color-mix(in oklab, var(--lamp) 45%, transparent); } }
+.lede { font-size: clamp(17px, 1.6vw, 19.5px); color: var(--ink-soft); max-width: 46ch; margin: 0; text-wrap: pretty; }
+.copy { display: grid; gap: 18px; max-width: 58ch; }
+.copy p { margin: 0; color: var(--ink-soft); text-wrap: pretty; }
+.copy h2 { margin-bottom: 8px; }
+.split { display: grid; gap: clamp(36px, 5vw, 72px); grid-template-columns: minmax(0, 1fr); align-items: center; }
+@media (min-width: 940px) { .split { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); } .split.flip > :first-child { order: 2; } }
+
+.hero { display: grid; gap: 26px; grid-template-columns: minmax(0, 1fr); align-items: end; }
+@media (min-width: 900px) { .hero { grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); } }
+.hero .lede strong { color: var(--ink); font-weight: 600; }
+.ctas { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  background: transparent;
+  transition: transform 0.2s, border-color 0.2s;
+}
+.btn:hover { transform: translateY(-1px); border-color: var(--amber); }
+.btn.primary { background: var(--ink); color: var(--wall); border-color: var(--ink); }
+.btn kbd { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius: 4px; border: 1px solid currentColor; opacity: 0.7; }
+
+.room { position: relative; margin-top: clamp(20px, 4vw, 40px); padding-top: var(--throw); --throw: clamp(70px, 11vw, 150px); }
+.stagewrap { position: relative; max-width: 1040px; margin: 0 auto; }
+.lens {
+  position: absolute;
+  left: 50%;
+  top: calc(-1 * var(--throw) - 10px);
+  width: 46px;
+  height: 18px;
+  transform: translateX(-50%);
+  border-radius: 6px;
+  background: var(--booth-2);
+  border: 1px solid var(--booth-line);
+  display: grid;
+  place-items: center;
+}
+.lens::after {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #fff6e4;
+  box-shadow: 0 0 10px 3px var(--lamp), 0 0 40px 10px color-mix(in oklab, var(--lamp) 50%, transparent);
+  transition: opacity 0.4s;
+}
+.beam, .dust {
+  position: absolute;
+  left: -5%;
+  width: 110%;
+  bottom: calc(100% - 4px);
+  height: calc(var(--throw) + 4px);
+  pointer-events: none;
+}
+.beam {
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  background: radial-gradient(62% 135% at 50% 0%, rgba(255, 246, 228, 0.9), color-mix(in oklab, var(--lamp) 60%, transparent) 18%, color-mix(in oklab, var(--lamp) 18%, transparent) 62%, transparent 100%);
+  opacity: calc(var(--beam) * 0.6);
+  filter: blur(2px);
+  transition: opacity 0.6s ease;
+  animation: hum 7s ease-in-out infinite;
+}
+@keyframes hum { 0%, 100% { filter: blur(2px) brightness(1); } 47% { filter: blur(2px) brightness(1.08); } 50% { filter: blur(2.5px) brightness(0.94); } }
+.scr {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  max-width: 100%;
+  background: var(--void);
+  border-radius: 4px;
+  overflow: hidden;
+  container-type: inline-size;
+  isolation: isolate;
+  cursor: pointer;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 40px 120px -30px color-mix(in oklab, var(--lamp) calc(var(--beam) * 45%), transparent),
+    0 30px 60px -30px rgba(0, 0, 0, 0.6);
+  transition: box-shadow 0.6s ease;
+}
+.rig.is-black .beam { opacity: calc(var(--beam) * 0.14); }
+.rig.is-black .scr { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 30px 60px -30px rgba(0, 0, 0, 0.6); }
+.kbd-hint {
+  margin: 18px 0 0;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.kbd-hint .on { display: none; color: var(--live); }
+.kbd-hint .on i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--live); margin-right: 8px; vertical-align: 1px; animation: blink 1.4s steps(2) infinite; }
+.rig:focus-within .kbd-hint .on { display: inline; }
+.rig:focus-within .kbd-hint .off { display: none; }
+@keyframes blink { 50% { opacity: 0.25; } }
+
+.L, .f { position: absolute; inset: 0; }
+.f { opacity: 0; transition: opacity 0.45s ease; }
+.f.on { opacity: 1; }
+.L-lt { z-index: 3; }
+.L-black { z-index: 4; background: var(--void); opacity: 0; transition: opacity 0.35s ease; pointer-events: none; }
+.rig.is-black .L-black { opacity: 1; }
+
+.bg { position: absolute; inset: -2%; background-size: 160% 160%; }
+.scr .bg { animation: drift 22s ease-in-out infinite alternate; }
+@keyframes drift { from { background-position: 0% 0%; } to { background-position: 100% 100%; } }
+.bg-night { background-color: #08112a; background-image: radial-gradient(60% 70% at 25% 20%, #2a4c8f 0%, transparent 70%), radial-gradient(55% 60% at 80% 85%, #47307a 0%, transparent 70%), radial-gradient(40% 40% at 60% 40%, #0e2a5c 0%, transparent 70%); }
+.bg-forest { background-color: #07160f; background-image: radial-gradient(60% 70% at 20% 85%, #2f7350 0%, transparent 70%), radial-gradient(50% 60% at 85% 15%, #1d4a3a 0%, transparent 70%), radial-gradient(35% 35% at 55% 55%, #4b6b2a 0%, transparent 70%); }
+.bg-ember { background-color: #1a0806; background-image: radial-gradient(55% 65% at 75% 80%, #c2531d 0%, transparent 70%), radial-gradient(55% 60% at 15% 20%, #6e1c2c 0%, transparent 70%), radial-gradient(30% 30% at 50% 50%, #8a3a12 0%, transparent 70%); }
+.bg-paper { background-color: #efe7d6; background-image: radial-gradient(70% 60% at 30% 20%, #fbf6ea 0%, transparent 70%), radial-gradient(60% 60% at 80% 90%, #e2d3b5 0%, transparent 70%); }
+
+.s {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2cqw;
+  padding: 7cqw 9cqw;
+  text-align: center;
+  color: var(--slide-ink);
+  text-shadow: 0 0.3cqw 1.4cqw rgba(0, 0, 0, 0.5);
+}
+.s-main { font-family: var(--display); font-weight: 440; font-size: 5.5cqw; line-height: 1.2; display: grid; gap: 0.15em; text-wrap: balance; }
+.s-second { font-family: var(--display); font-style: italic; font-weight: 380; font-size: 3.9cqw; color: var(--slide-soft); }
+.s-scripture .s-main { font-size: 4.5cqw; line-height: 1.3; font-weight: 400; max-width: 30ch; }
+.s-ref { position: absolute; right: 5cqw; bottom: 4.2cqw; font-family: var(--mono); font-size: 1.7cqw; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.8; text-shadow: none; }
+.sc { font-variant: small-caps; letter-spacing: 0.04em; }
+.s-giving { color: var(--paper-ink); text-shadow: none; gap: 1.4cqw; }
+.s-giving .s-main { font-size: 4.6cqw; font-weight: 480; }
+.give { display: grid; gap: 0.6cqw; justify-items: center; padding: 2.4cqw 4.4cqw; border: 0.25cqw solid currentColor; border-radius: 1.2cqw; }
+.give span { font-family: var(--mono); font-size: 1.7cqw; letter-spacing: 0.18em; text-transform: uppercase; }
+.give b { font-family: var(--display); font-size: 6.6cqw; font-weight: 560; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.lt {
+  position: absolute;
+  left: 5cqw;
+  bottom: 6cqw;
+  display: grid;
+  grid-template-columns: 1.1cqw auto;
+  column-gap: 1.8cqw;
+  align-items: stretch;
+  padding: 1.6cqw 3cqw 1.6cqw 1.6cqw;
+  background: rgba(10, 9, 8, 0.86);
+  border-radius: 0.6cqw;
+  color: var(--slide-ink);
+  transform: translateX(-4cqw);
+  opacity: 0;
+  transition: transform 0.5s cubic-bezier(.2,.9,.3,1), opacity 0.4s;
+}
+.lt.on { transform: none; opacity: 1; }
+.lt::before { content: ""; grid-row: span 2; background: var(--lamp); border-radius: 0.3cqw; }
+.lt b { font-family: var(--body); font-weight: 650; font-size: 2.9cqw; line-height: 1.15; }
+.lt span { font-family: var(--mono); font-size: 1.6cqw; letter-spacing: 0.16em; text-transform: uppercase; color: var(--slide-soft); }
+.checker { position: absolute; inset: 0; background-color: #1a1a1d; background-image: linear-gradient(45deg, #222226 25%, transparent 25%, transparent 75%, #222226 75%), linear-gradient(45deg, #222226 25%, transparent 25%, transparent 75%, #222226 75%); background-size: 16px 16px; background-position: 0 0, 8px 8px; }
+
+.booth {
+  margin-top: clamp(28px, 4vw, 44px);
+  background: var(--booth);
+  color: var(--booth-fg);
+  border: 1px solid var(--booth-line);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 30px 80px -40px rgba(0, 0, 0, 0.55);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.booth-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 9px 14px;
+  background: var(--booth-2);
+  border-bottom: 1px solid var(--booth-line);
+  font-size: 12.5px;
+  flex-wrap: wrap;
+}
+.tabs { display: inline-flex; background: rgba(255, 255, 255, 0.06); border-radius: 7px; padding: 2px; }
+.tabs span { padding: 3px 12px; border-radius: 5px; color: var(--booth-muted); }
+.tabs .on { background: #3a3a3f; color: var(--booth-fg); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); }
+.layers { display: inline-flex; gap: 12px; margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--booth-muted); flex-wrap: wrap; }
+.layers span { display: inline-flex; align-items: center; gap: 6px; }
+.layers i { width: 7px; height: 7px; border-radius: 50%; background: var(--light-off); transition: background-color 0.2s, box-shadow 0.2s; }
+.layers .on i { background: var(--tally); box-shadow: 0 0 8px var(--tally); }
+.onair { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; padding: 3px 8px; border-radius: 4px; color: var(--tally-text); background: rgba(255, 90, 95, 0.12); }
+.onair.black { color: var(--booth-fg); background: var(--booth-3); outline: 1px solid var(--booth-line); animation: blink 1.2s steps(2) infinite; }
+.booth-grid { display: grid; grid-template-columns: minmax(0, 1fr); background: var(--booth-line); gap: 1px; }
+@media (min-width: 900px) { .booth-grid { grid-template-columns: 210px minmax(0, 1fr) 250px; } }
+.pane { background: var(--booth); padding: 14px; min-width: 0; }
+.pane h3 { margin: 0 0 10px; font-family: var(--mono); font-size: 10.5px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--booth-muted); display: flex; justify-content: space-between; gap: 8px; }
+.order { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+@media (max-width: 899px) { .order { grid-auto-flow: column; grid-auto-columns: minmax(150px, 1fr); overflow-x: auto; padding-bottom: 4px; } }
+.order button {
+  width: 100%;
+  text-align: left;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+}
+.order button:hover { background: rgba(255, 255, 255, 0.05); }
+.order .ty { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--booth-muted); }
+.order .ti { font-weight: 600; font-size: 13.5px; grid-column: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.order .st { grid-row: 1 / span 2; grid-column: 2; align-self: center; font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.12em; }
+.order .is-sel { background: rgba(255, 255, 255, 0.07); border-color: rgba(255, 255, 255, 0.12); }
+.order .is-live .st { color: var(--tally-text); }
+.thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.thumb {
+  position: relative;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: var(--booth-3);
+  cursor: pointer;
+  text-align: left;
+  outline: 1px solid var(--booth-line);
+  transition: outline-color 0.2s, transform 0.2s;
+}
+.thumb:hover { transform: translateY(-2px); }
+.thumb .scrn { border-radius: 6px 6px 0 0; }
+.thumb .cap { display: flex; justify-content: space-between; gap: 6px; padding: 5px 8px; font-family: var(--mono); font-size: 10.5px; color: var(--booth-muted); }
+.thumb .cap b { color: var(--booth-fg); font-weight: 600; }
+.thumb.is-live { outline: 2px solid var(--tally); }
+.thumb.is-live .cap::after { content: "LIVE"; color: var(--tally-text); font-weight: 700; letter-spacing: 0.1em; }
+.thumb.is-next { outline: 2px solid var(--preview); }
+.thumb.is-next .cap::after { content: "NEXT"; color: var(--preview); font-weight: 700; letter-spacing: 0.1em; }
+.scrn { position: relative; aspect-ratio: 16 / 9; max-width: 100%; overflow: hidden; container-type: inline-size; background: var(--void); }
+.stage {
+  aspect-ratio: 4 / 3;
+  max-width: 100%;
+  background: var(--void);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  gap: 4px;
+  outline: 1px solid var(--booth-line);
+}
+.stage .clock { font-family: var(--mono); font-size: 12px; color: var(--lamp); text-align: right; font-variant-numeric: tabular-nums; }
+.stage .now { font-family: var(--body); font-weight: 600; font-size: 15px; line-height: 1.3; color: #fff; align-self: center; text-wrap: balance; }
+.stage .lbl { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.16em; color: var(--preview); }
+.stage .nxt { font-size: 12px; color: var(--booth-muted); line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.stage-note { margin: 10px 0 0; font-size: 12px; color: var(--booth-muted); }
+.keys { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 12px 14px; border-top: 1px solid var(--booth-line); background: var(--booth-2); }
+.key { display: inline-flex; align-items: center; gap: 7px; background: transparent; border: 0; padding: 3px 2px; cursor: pointer; color: var(--booth-muted); font-size: 12.5px; border-radius: 6px; }
+.key:hover { color: var(--booth-fg); }
+.key kbd {
+  font-family: var(--mono);
+  font-size: 11px;
+  min-width: 26px;
+  text-align: center;
+  padding: 4px 7px 3px;
+  border-radius: 5px;
+  background: var(--booth-key);
+  color: var(--booth-fg);
+  box-shadow: inset 0 -2px 0 var(--booth-3), 0 0 0 1px var(--booth-line);
+  transition: transform 0.08s, box-shadow 0.08s;
+}
+.key.hit kbd, .key:active kbd { transform: translateY(1px); box-shadow: inset 0 -1px 0 var(--booth-3), 0 0 0 1px var(--lamp); }
+
+.breaker {
+  justify-self: center;
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  padding: 34px 40px 28px;
+  border-radius: 18px;
+  background: var(--wall-2);
+  border: 1px solid var(--line);
+  width: min(100%, 380px);
+}
+.breaker .plate { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); display: flex; gap: 10px; width: 100%; justify-content: space-between; }
+.switch {
+  position: relative;
+  width: 116px;
+  height: 180px;
+  border-radius: 16px;
+  border: 0;
+  cursor: pointer;
+  background: linear-gradient(180deg, var(--booth-2), var(--booth));
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.06), 0 18px 30px -16px rgba(0, 0, 0, 0.6);
+  padding: 0;
+}
+.switch::before { content: "ON"; position: absolute; top: 12px; left: 0; right: 0; text-align: center; font-family: var(--mono); font-size: 10px; letter-spacing: 0.2em; color: var(--booth-muted); }
+.switch::after { content: "OFF"; position: absolute; bottom: 12px; left: 0; right: 0; text-align: center; font-family: var(--mono); font-size: 10px; letter-spacing: 0.2em; color: var(--booth-muted); }
+.lever {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  top: 34px;
+  height: 64px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #f6b24c, #d98a1a);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35), inset 0 -4px 0 rgba(0, 0, 0, 0.18), 0 8px 14px -6px rgba(0, 0, 0, 0.7);
+  transition: top 0.18s cubic-bezier(.5,0,.6,1.4);
+}
+.lever::after { content: ""; position: absolute; left: 14px; right: 14px; top: 50%; height: 3px; margin-top: -1.5px; border-radius: 2px; background: rgba(0, 0, 0, 0.22); }
+.switch[aria-pressed="true"] .lever { top: 82px; }
+.switch:hover .lever { filter: brightness(1.06); }
+.breaker .cap { font-weight: 600; font-size: 15px; }
+.breaker small { font-size: 13px; color: var(--muted); text-align: center; line-height: 1.45; }
+
+.outage { position: fixed; inset: 0; z-index: 50; background: var(--void); color: #e9e4da; display: grid; place-items: center; padding: max(24px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(24px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.outage[hidden] { display: none !important; }
+.outage .crt { position: absolute; left: 0; right: 0; top: 50%; height: 2px; background: #fff; box-shadow: 0 0 20px 4px rgba(255, 255, 255, 0.6); transform-origin: center; animation: crt 0.55s ease-in forwards; }
+@keyframes crt { 0% { transform: scaleY(300); opacity: 0.85; } 40% { transform: scaleY(1); opacity: 1; } 100% { transform: scaleX(0); opacity: 0; } }
+.boot { font-family: var(--mono); font-size: clamp(12px, 1.6vw, 15px); line-height: 1.9; width: min(100%, 560px); margin: 0; padding: 0; list-style: none; }
+.boot li { display: flex; gap: 12px; justify-content: space-between; animation: type 0.25s steps(8) both; white-space: nowrap; }
+.boot li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+.boot .ok { color: var(--preview); }
+.boot .hi { color: var(--lamp); }
+@keyframes type { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+.outage .skip { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: max(16px, env(safe-area-inset-bottom, 0px)); background: transparent; border: 1px solid #333; color: #888; border-radius: 6px; padding: 6px 12px; font-family: var(--mono); font-size: 12px; cursor: pointer; }
+.fading { animation: unveil 0.9s ease forwards; }
+@keyframes unveil { to { opacity: 0; } }
+.warmup .beam { animation: warm 1.6s ease-out both; }
+.warmup .lens::after { animation: warm 1.6s ease-out both; }
+@keyframes warm { 0% { opacity: 0; } 12% { opacity: 0.5; } 18% { opacity: 0.05; } 30% { opacity: 0.6; } 36% { opacity: 0.2; } 100% { opacity: calc(var(--beam) * 0.55); } }
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  transform: translate(-50%, 20px);
+  z-index: 40;
+  max-width: calc(100% - 32px);
+  background: var(--booth);
+  color: var(--booth-fg);
+  border: 1px solid var(--booth-line);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 14px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.4s, transform 0.4s;
+  pointer-events: none;
+}
+.toast.on { opacity: 1; transform: translate(-50%, 0); }
+.toast i { width: 8px; height: 8px; border-radius: 50%; background: var(--preview); flex: none; }
+
+.bi { display: grid; gap: 14px; }
+.bi .scrn { border-radius: 6px; box-shadow: 0 30px 70px -40px rgba(0, 0, 0, 0.7); }
+.box { position: absolute; left: 9%; right: 9%; display: flex; align-items: center; justify-content: center; text-align: center; transition: top 0.6s cubic-bezier(.3,.8,.3,1), height 0.6s cubic-bezier(.3,.8,.3,1), opacity 0.4s; color: var(--slide-ink); text-shadow: 0 0.3cqw 1.4cqw rgba(0, 0, 0, 0.5); }
+.box::after { content: attr(data-role); position: absolute; left: 0; top: -2.6cqw; font-family: var(--mono); font-size: 1.6cqw; letter-spacing: 0.14em; text-transform: uppercase; color: var(--lamp); opacity: 0; transition: opacity 0.3s; text-shadow: none; }
+.bi.boxes .box { outline: 0.2cqw dashed color-mix(in oklab, var(--lamp) 80%, transparent); outline-offset: 0; }
+.bi.boxes .box::after { opacity: 1; }
+.box.main { top: 16%; height: 44%; font-family: var(--display); font-size: 8cqw; font-weight: 440; }
+.box.second { top: 64%; height: 17%; font-family: var(--display); font-style: italic; font-size: 5cqw; color: var(--slide-soft); }
+.box.ref { top: 86%; height: 7%; left: auto; right: 5%; width: 28%; font-family: var(--mono); font-size: 1.7cqw; letter-spacing: 0.12em; text-transform: uppercase; justify-content: flex-end; }
+.bi.solo .box.main { top: 16%; height: 65%; font-size: 9.5cqw; }
+.bi.solo .box.second { opacity: 0; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; font-size: 14px; }
+.seg { display: inline-flex; padding: 3px; border-radius: 9px; background: var(--wall-2); border: 1px solid var(--line); }
+.seg button { border: 0; background: transparent; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 500; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--wall); color: var(--ink); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15); }
+.check { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; color: var(--ink-soft); }
+.check input { accent-color: var(--amber); width: 16px; height: 16px; }
+.soon { display: inline-block; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); margin-right: 6px; vertical-align: 2px; }
+
+.vol { background: var(--booth); color: var(--booth-fg); border-radius: 20px; padding: 18px; border: 1px solid var(--booth-line); box-shadow: 0 40px 90px -50px rgba(0, 0, 0, 0.7); display: grid; gap: 16px; }
+.vol-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; color: var(--booth-muted); }
+.vol-head b { color: var(--booth-fg); font-weight: 600; }
+.lock { display: inline-flex; gap: 6px; align-items: center; font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; padding: 4px 9px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); }
+.lock svg { width: 12px; height: 12px; }
+.vol-body { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 560px) { .vol-body { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); } }
+.vol-body .scrn { border-radius: 8px; outline: 2px solid var(--tally); }
+.vol-txt { display: grid; gap: 12px; align-content: center; min-width: 0; }
+.vol-txt span { display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; }
+.vol-txt .a span { color: var(--tally-text); }
+.vol-txt .b span { color: var(--preview); }
+.vol-txt p { margin: 2px 0 0; font-size: 15px; font-weight: 600; line-height: 1.35; }
+.vol-txt .b p { color: var(--booth-muted); font-weight: 500; }
+.vol-btns { display: grid; grid-template-columns: 1fr 1.6fr 1fr; gap: 10px; }
+.vb { height: 68px; border-radius: 14px; border: 1px solid var(--booth-line); background: var(--booth-2); color: var(--booth-fg); font-size: 17px; font-weight: 650; cursor: pointer; transition: transform 0.1s, filter 0.2s; }
+.vb:active { transform: scale(0.97); }
+.vb.go { background: var(--lamp); color: #1a1206; border-color: transparent; font-size: 20px; }
+.vb.clr { color: var(--tally-text); border-color: rgba(255, 90, 95, 0.35); }
+.vb:hover { filter: brightness(1.1); }
+.vol-foot { margin: 0; font-size: 12.5px; color: var(--booth-muted); }
+
+.marquee { overflow: hidden; margin-top: 44px; display: grid; gap: 12px; mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); }
+.track { display: flex; gap: 12px; width: max-content; animation: slide 46s linear infinite; }
+.track.rev { animation-direction: reverse; animation-duration: 54s; }
+.marquee:hover .track { animation-play-state: paused; }
+@keyframes slide { to { transform: translateX(-50%); } }
+.file { display: inline-flex; align-items: baseline; gap: 10px; padding: 12px 16px; border-radius: 10px; background: var(--wall-2); border: 1px solid var(--line); white-space: nowrap; }
+.file b { font-weight: 600; font-size: 15.5px; }
+.file code { font-family: var(--mono); font-size: 12.5px; color: var(--amber); }
+.counts { display: grid; gap: 28px; grid-template-columns: minmax(0, 1fr); margin-top: 52px; }
+@media (min-width: 760px) { .counts { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.count { display: grid; gap: 8px; align-content: start; padding-top: 18px; border-top: 1px solid var(--line); }
+.count .num { font-family: var(--display); font-size: clamp(3.4rem, 6vw, 5rem); font-weight: 340; line-height: 0.9; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+.count p { margin: 0; color: var(--ink-soft); font-size: 15.5px; max-width: 36ch; }
+.count .abbr { font-family: var(--mono); font-size: 12.5px; color: var(--amber); letter-spacing: 0.06em; }
+
+.free { font-family: var(--display); font-weight: 340; font-size: clamp(2.6rem, 7vw, 6.2rem); line-height: 0.95; letter-spacing: -0.035em; margin: 0; text-wrap: balance; }
+.free em { color: var(--amber); }
+.facts { display: grid; gap: 0; grid-template-columns: minmax(0, 1fr); margin: 48px 0 0; }
+@media (min-width: 760px) { .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 48px; } }
+@media (min-width: 1200px) { .facts { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.fact { padding-block: 18px; border-top: 1px solid var(--line); display: grid; gap: 4px; min-width: 0; }
+.fact dt { font-weight: 650; font-size: 16px; }
+.fact dd { margin: 0; color: var(--ink-soft); font-size: 15px; }
+
+.amen { font-family: var(--display); font-weight: 300; font-style: italic; font-size: clamp(3.6rem, 13vw, 11rem); line-height: 0.85; letter-spacing: -0.045em; margin: 0; }
+.amen span { color: var(--amber); }
+.end { display: grid; gap: 28px; }
+.small { font-size: 13px; color: var(--muted); max-width: 80ch; margin: 0; line-height: 1.6; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .beam, .scr .bg, .track, .kbd-hint .on i, .onair.black { animation: none !important; }
+  .f, .lt, .box, .L-black { transition-duration: 0.01s !important; }
+  .track { flex-wrap: wrap; width: auto; }
+  .track[aria-hidden="true"] { display: none; }
+  .marquee { mask-image: none; -webkit-mask-image: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <a class="mark" href="#rig"><i class="tally" aria-hidden="true"></i>OpenStage</a>
+    <p class="readout" aria-hidden="true">
+      <span class="chip live">LIVE</span><b id="r-live">The rig</b>
+      <span class="nx"><span class="chip next">NEXT</span><b id="r-next">Power cut</b></span>
+    </p>
+    <button class="lights" id="lights" type="button" aria-pressed="false">
+      <span class="slider" aria-hidden="true"></span>
+      House lights <span class="state" id="lights-state">Up</span>
+    </button>
+  </div>
+</header>
+
+<div class="page">
+  <nav class="rail" aria-label="Sections, as a service order">
+    <p class="rail-h">Sunday service</p>
+    <ol id="rail">
+      <li><a href="#rig" data-sec="rig"><span class="t">09:00</span><span class="n">The rig</span><span class="k">Live demo <span class="chip live">LIVE</span><span class="chip next">NEXT</span></span></a></li>
+      <li><a href="#power" data-sec="power"><span class="t">09:18</span><span class="n">Power cut</span><span class="k">Not in the plan <span class="chip live">LIVE</span><span class="chip next">NEXT</span></span></a></li>
+      <li><a href="#languages" data-sec="languages"><span class="t">09:30</span><span class="n">Two languages</span><span class="k">Scripture <span class="chip live">LIVE</span><span class="chip next">NEXT</span></span></a></li>
+      <li><a href="#volunteers" data-sec="volunteers"><span class="t">09:45</span><span class="n">Volunteer mode</span><span class="k">Hand-over <span class="chip live">LIVE</span><span class="chip next">NEXT</span></span></a></li>
+      <li><a href="#library" data-sec="library"><span class="t">10:05</span><span class="n">Your songs</span><span class="k">Library <span class="chip live">LIVE</span><span class="chip next">NEXT</span></span></a></li>
+      <li><a href="#offering" data-sec="offering"><span class="t">10:40</span><span class="n">Free</span><span class="k">Offering <span class="chip live">LIVE</span><span class="chip next">NEXT</span></span></a></li>
+      <li><a href="#benediction" data-sec="benediction"><span class="t">10:55</span><span class="n">Go in peace</span><span class="k">Benediction <span class="chip live">LIVE</span><span class="chip next">NEXT</span></span></a></li>
+    </ol>
+    <p class="rail-foot">This page runs like a service. The part you are reading is live; the next one is cued.</p>
+  </nav>
+
+  <main>
+    <section class="sec rig" id="rig" data-title="The rig" aria-labelledby="h-rig">
+      <div class="hero">
+        <div>
+          <p class="eyebrow"><span class="time">09:00</span><span>Free church presentation software</span></p>
+          <h1 id="h-rig">Put the words <em>on the wall.</em></h1>
+        </div>
+        <div>
+          <p class="lede">OpenStage puts <strong>lyrics, scripture, lower thirds and a stage display</strong> on your screens. It is free and open source, and it was made first for bilingual services, modest PCs and volunteers on a Sunday morning.</p>
+          <div class="ctas">
+            <button class="btn primary" type="button" id="take">Take the next slide <kbd>Space</kbd></button>
+            <a class="btn" href="#offering">GPL-3.0, no subscription</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="room">
+        <div class="stagewrap">
+          <div class="beam" aria-hidden="true"></div>
+          <canvas class="dust" id="dust" aria-hidden="true"></canvas>
+          <div class="lens" aria-hidden="true"></div>
+          <div class="scr" id="projector" tabindex="0" aria-label="Projector screen. Click it, then use the keys listed below to run the demo service.">
+            <div class="L L-bg"><div class="f"></div><div class="f"></div></div>
+            <div class="L L-slide"><div class="f"></div><div class="f"></div></div>
+            <div class="L L-lt" id="lt-layer"></div>
+            <div class="L L-black"></div>
+          </div>
+        </div>
+        <p class="kbd-hint"><span class="off">Click the screen, then run it from your keyboard.</span><span class="on"><i></i>Keyboard is live. Esc blacks out the screen.</span></p>
+      </div>
+
+      <div class="booth" aria-label="Operator controls">
+        <div class="booth-bar">
+          <span class="tabs" aria-hidden="true"><span class="on">Present</span><span>Edit</span></span>
+          <span class="layers" id="layer-lights">
+            <span data-layer="bg"><i></i>Background</span>
+            <span data-layer="slide"><i></i>Slides</span>
+            <span data-layer="lt"><i></i>Lower third</span>
+            <span data-layer="audio"><i></i>Audio</span>
+          </span>
+          <span class="onair" id="onair">LIVE</span>
+        </div>
+        <div class="booth-grid">
+          <div class="pane">
+            <h3><span>Service order</span><span>13 Nov</span></h3>
+            <ol class="order" id="order"></ol>
+          </div>
+          <div class="pane">
+            <h3><span id="sel-title">Blessed Assurance</span><span id="sel-meta"></span></h3>
+            <div class="thumbs" id="thumbs"></div>
+          </div>
+          <div class="pane">
+            <h3><span>Stage display</span><span>Monitor</span></h3>
+            <div class="stage" id="stage">
+              <div class="clock" data-clock>00:00:00</div>
+              <div class="now" id="stage-now"></div>
+              <div class="lbl">NEXT</div>
+              <div class="nxt" id="stage-next"></div>
+            </div>
+            <p class="stage-note">What the band sees: the line on screen and the one coming.</p>
+          </div>
+        </div>
+        <div class="keys" id="keys">
+          <button class="key" type="button" data-act="next"><kbd>Space</kbd>Show what is cued</button>
+          <button class="key" type="button" data-act="back"><kbd>&larr;</kbd></button>
+          <button class="key" type="button" data-act="fwd"><kbd>&rarr;</kbd>Slide</button>
+          <button class="key" type="button" data-act="up"><kbd>&uarr;</kbd></button>
+          <button class="key" type="button" data-act="down"><kbd>&darr;</kbd>Cue item</button>
+          <button class="key" type="button" data-act="chorus"><kbd>C</kbd>Chorus</button>
+          <button class="key" type="button" data-act="verse2"><kbd>2</kbd>Verse 2</button>
+          <button class="key" type="button" data-act="clearBg"><kbd>F1</kbd>Clear background</button>
+          <button class="key" type="button" data-act="clearSlide"><kbd>F2</kbd>Clear slide</button>
+          <button class="key" type="button" data-act="clearLt"><kbd>F3</kbd>Clear lower third</button>
+          <button class="key" type="button" data-act="black"><kbd>Esc</kbd>Black screen</button>
+        </div>
+      </div>
+      <p class="sr" aria-live="polite" id="announce"></p>
+    </section>
+
+    <section class="sec" id="power" data-title="Power cut" aria-labelledby="h-power">
+      <div class="split">
+        <div class="copy">
+          <p class="eyebrow"><span class="time off">09:18</span><span>Not in the plan</span></p>
+          <h2 id="h-power">The power goes. <em>The service doesn't start over.</em></h2>
+          <p>OpenStage saves what is on screen every time it changes: it writes a temporary file, syncs it to disk, then swaps it in, so a half-written save cannot exist. When the PC comes back, every screen picks up where it was. Anything that was deleted in the meantime is quietly dropped.</p>
+          <p>If the presentation engine itself crashes, it restarts on its own and reconnects every window. The projector holds its last frame while that happens, so the congregation never sees a desktop.</p>
+        </div>
+        <div class="breaker">
+          <div class="plate"><span>Booth PC</span><span>240 V</span></div>
+          <button class="switch" id="plug" type="button" aria-pressed="false" aria-describedby="plug-note"><span class="lever" aria-hidden="true"></span><span class="sr">Pull the plug</span></button>
+          <span class="cap">Pull the plug</span>
+          <small id="plug-note">Cuts the power to this page. Watch what comes back.</small>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" id="languages" data-title="Two languages" aria-labelledby="h-lang">
+      <div class="split flip">
+        <div class="copy">
+          <p class="eyebrow"><span class="time">09:30</span><span>Scripture and song</span></p>
+          <h2 id="h-lang">Two languages. <em>One slide.</em></h2>
+          <p>Songs and readings carry a second language line by line. Each theme has its own box for it, with its own font, colour and place on the screen, so English and Swahili sit together without anyone retyping a slide.</p>
+          <p>When a song has only one language, the main text grows into the space the translation would have used. One theme works for both.</p>
+          <p><span class="soon">Planned</span>Phones in the pews: the congregation follows along in the language they choose.</p>
+        </div>
+        <div class="bi boxes" id="bi">
+          <div class="scrn">
+            <div class="bg bg-forest"></div>
+            <div class="box main" data-role="Main">God is good</div>
+            <div class="box second" data-role="Second language">Mungu ni mwema</div>
+            <div class="box ref" data-role="Reference">Call to worship</div>
+          </div>
+          <div class="controls">
+            <span class="seg" role="group" aria-label="Languages on the slide">
+              <button type="button" id="bi-two" aria-pressed="true">English and Swahili</button>
+              <button type="button" id="bi-one" aria-pressed="false">English only</button>
+            </span>
+            <label class="check" for="bi-boxes"><input type="checkbox" id="bi-boxes" checked>Show the theme's boxes</label>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" id="volunteers" data-title="Volunteer mode" aria-labelledby="h-vol">
+      <div class="split">
+        <div class="copy">
+          <p class="eyebrow"><span class="time">09:45</span><span>Hand-over</span></p>
+          <h2 id="h-vol">Hand it to a volunteer. <em>Lock the rest.</em></h2>
+          <p>Set a PIN and the window becomes one simple screen: the service, what is showing, what comes next, and big Back, Next and Clear buttons. Nothing can be edited or deleted until someone unlocks it, and the lock stays on after a restart.</p>
+          <p>Need a run-through first? Rehearse plays the whole service off-air. The screens keep what they showed, and stopping puts everything back.</p>
+          <p>These buttons drive the same projector as the demo at the top. Like the app, this page has one engine and every window follows it.</p>
+        </div>
+        <div class="vol" aria-label="Volunteer mode controls">
+          <div class="vol-head"><b>Sunday service</b><span class="lock"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 7V5a4 4 0 0 1 8 0v2h.5A1.5 1.5 0 0 1 14 8.5v5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 13.5v-5A1.5 1.5 0 0 1 3.5 7H4Zm1.5 0h5V5a2.5 2.5 0 0 0-5 0v2Z"/></svg>Locked by PIN</span></div>
+          <div class="vol-body">
+            <div class="scrn" id="vol-screen"></div>
+            <div class="vol-txt">
+              <div class="a"><span>On screen</span><p id="vol-now"></p></div>
+              <div class="b"><span>Up next</span><p id="vol-next"></p></div>
+            </div>
+          </div>
+          <div class="vol-btns">
+            <button class="vb" type="button" data-act="back">Back</button>
+            <button class="vb go" type="button" data-act="fwd">Next</button>
+            <button class="vb clr" type="button" data-act="clearAll">Clear</button>
+          </div>
+          <p class="vol-foot">Editing, deleting and settings are hidden until the PIN is entered.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" id="library" data-title="Your songs" aria-labelledby="h-lib">
+      <div class="copy">
+        <p class="eyebrow"><span class="time">10:05</span><span>Library</span></p>
+        <h2 id="h-lib">Bring the songs <em>you already have.</em></h2>
+        <p>Drop your old files on the library. Every import shows what it found before anything is saved, and duplicates are skipped unless you choose Merge or Keep both.</p>
+      </div>
+      <div class="marquee" aria-label="Formats OpenStage imports">
+        <div class="track">
+          <span class="file"><b>OpenLyrics</b><code>.xml</code></span>
+          <span class="file"><b>ChordPro</b><code>.cho</code></span>
+          <span class="file"><b>SongSelect</b><code>.usr .txt</code></span>
+          <span class="file"><b>Plain text</b><code>.txt</code></span>
+          <span class="file"><b>FreeShow</b><code>.show</code></span>
+          <span class="file"><b>OpenLP</b><code>songs.sqlite</code></span>
+          <span class="file"><b>ProPresenter 6</b><code>.pro6</code></span>
+          <span class="file"><b>EasyWorship 6 and 7</b><code>Songs.db</code></span>
+        </div>
+        <div class="track" aria-hidden="true">
+          <span class="file"><b>OpenLyrics</b><code>.xml</code></span>
+          <span class="file"><b>ChordPro</b><code>.cho</code></span>
+          <span class="file"><b>SongSelect</b><code>.usr .txt</code></span>
+          <span class="file"><b>Plain text</b><code>.txt</code></span>
+          <span class="file"><b>FreeShow</b><code>.show</code></span>
+          <span class="file"><b>OpenLP</b><code>songs.sqlite</code></span>
+          <span class="file"><b>ProPresenter 6</b><code>.pro6</code></span>
+          <span class="file"><b>EasyWorship 6 and 7</b><code>Songs.db</code></span>
+        </div>
+      </div>
+      <div class="counts">
+        <div class="count"><span class="num">270</span><p>Public-domain hymns from the Open Hymnal, installed on first run so a new church has songs on day one.</p></div>
+        <div class="count"><span class="num">5</span><p>Public-domain Bibles built in. <span class="abbr">KJV · BSB · WEB · ASV · BBE</span></p></div>
+        <div class="count"><span class="num">5</span><p>Bible file formats you can import for translations your church holds rights to. <span class="abbr">OSIS · Zefania · USFX · USX · USFM</span></p></div>
+      </div>
+    </section>
+
+    <section class="sec" id="offering" data-title="Free" aria-labelledby="h-free">
+      <p class="eyebrow"><span class="time">10:40</span><span>Offering</span></p>
+      <h2 class="free" id="h-free">The software is free. <em>The offering stays with the church.</em></h2>
+      <dl class="facts">
+        <div class="fact"><dt>Open source, GPL-3.0</dt><dd>Read it, change it, share it. Nobody can lock your church out of its own slides.</dd></div>
+        <div class="fact"><dt>No account, no subscription</dt><dd>Install it and run your service. Nothing to renew before Sunday.</dd></div>
+        <div class="fact"><dt>Works offline</dt><dd>Songs, Bibles and fonts live on the PC. A dead internet connection changes nothing.</dd></div>
+        <div class="fact"><dt>Made for the PC in the booth</dt><dd>Built first for the modest Windows machines most churches already own.</dd></div>
+        <div class="fact"><dt>Slides look the same everywhere</dt><dd>The slide fonts ship with the app, so a song set up at home looks right in the sanctuary.</dd></div>
+        <div class="fact"><dt>Giving slides</dt><dd>Show your M-Pesa paybill and account in big, clear type when it is time for the offering.</dd></div>
+      </dl>
+    </section>
+
+    <section class="sec" id="benediction" data-title="Go in peace" aria-labelledby="h-end">
+      <div class="end">
+        <p class="eyebrow"><span class="time">10:55</span><span>Benediction</span></p>
+        <h2 class="amen" id="h-end">Go in <span>peace.</span></h2>
+        <div class="ctas"><a class="btn primary" href="https://github.com/cyenite/OpenStage/releases/latest">Download OpenStage</a><a class="btn" href="https://github.com/cyenite/OpenStage">Source on GitHub</a><a class="btn" href="#rig">Back to the rig</a></div>
+        <p class="small">OpenStage is in early development (version 0.0.0), made first for churches in Kenya and East Africa, with nothing in it that stops it working anywhere else. Licensed under the GNU GPL v3 or later. Demo content: Blessed Assurance by Fanny Crosby (1873) and Psalm 118:24 from the King James Version, both public domain. The paybill on the giving slide is an example.</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="outage" id="outage" hidden role="status" aria-live="assertive">
+  <div class="crt" id="crt"></div>
+  <ol class="boot" id="boot"></ol>
+  <button class="skip" type="button" id="skip">Skip</button>
+</div>
+<div class="toast" id="toast" role="status"><i></i><span id="toast-text"></span></div>
+
+<script>
+(() => {
+  const ITEMS = [
+    { type: 'Slide', title: 'Welcome', theme: 'ember', slides: [
+      { label: 'Slide', main: ['Welcome home'], second: 'Karibu nyumbani' }
+    ] },
+    { type: 'Song', title: 'Blessed Assurance', meta: 'Crosby, 1873', theme: 'night', slides: [
+      { label: 'V1', main: ['Blessed assurance, Jesus is mine!', 'O what a foretaste of glory divine!'] },
+      { label: 'V1', main: ['Heir of salvation, purchase of God,', 'Born of His Spirit, washed in His blood.'] },
+      { label: 'C', main: ['This is my story, this is my song,', 'Praising my Saviour all the day long.'] },
+      { label: 'V2', main: ['Perfect submission, perfect delight,', 'Visions of rapture now burst on my sight;'] },
+      { label: 'V2', main: ['Angels descending bring from above', 'Echoes of mercy, whispers of love.'] },
+      { label: 'C', main: ['This is my story, this is my song,', 'Praising my Saviour all the day long.'] }
+    ] },
+    { type: 'Slide', title: 'God is good', theme: 'forest', slides: [
+      { label: 'Call', main: ['God is good'], second: 'Mungu ni mwema' },
+      { label: 'Response', main: ['All the time'], second: 'Wakati wote' }
+    ] },
+    { type: 'Scripture', title: 'Psalm 118:24', meta: 'KJV', theme: 'night', slides: [
+      { label: 'v24', kind: 'scripture', main: ['This is the day which the <span class="sc">Lord</span> hath made; we will rejoice and be glad in it.'], ref: 'Psalm 118:24 · KJV' }
+    ] },
+    { type: 'Lower third', title: 'Guest speaker', lt: { name: 'Rev. Daniel Otieno', role: 'Guest speaker' }, slides: [{ label: 'L3' }] },
+    { type: 'Slide', title: 'Offering', theme: 'paper', slides: [
+      { label: 'Giving', kind: 'giving', main: ['Sadaka · Offering'], giving: { paybill: '123 456', account: 'SADAKA' } }
+    ] }
+  ];
+  const LABELS = { C: 'chorus', V1: 'verse 1', V2: 'verse 2', L3: 'lower third' };
+
+  const state = { live: { i: 1, s: 0 }, sel: 1, bg: 'night', isBgOn: true, isSlideOn: true, lt: null, isBlack: false };
+
+  const $ = (id) => document.getElementById(id);
+  const rig = $('rig');
+  const projector = $('projector');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const plain = (html) => html.replace(/<[^>]+>/g, '');
+  const isLt = (i) => ITEMS[i].type === 'Lower third';
+  const slideAt = (pos) => pos && ITEMS[pos.i].slides[pos.s];
+  const labelOf = (slide) => LABELS[slide.label] || slide.label.toLowerCase();
+
+  function slideHTML(i, s) {
+    const item = ITEMS[i];
+    if (item.lt) return '';
+    const slide = item.slides[s];
+    const kind = slide.kind ? ' s-' + slide.kind : '';
+    let html = '<div class="s' + kind + '"><div class="s-main">' + slide.main.map((l) => '<span>' + l + '</span>').join('') + '</div>';
+    if (slide.second) html += '<div class="s-second">' + slide.second + '</div>';
+    if (slide.giving) html += '<div class="give"><span>Lipa na M-Pesa</span><b>Paybill ' + slide.giving.paybill + '</b><span>Account ' + slide.giving.account + '</span></div>';
+    if (slide.ref) html += '<div class="s-ref">' + slide.ref + '</div>';
+    return html + '</div>';
+  }
+  const ltHTML = (lt, isOn) => '<div class="lt' + (isOn ? ' on' : '') + '"><b>' + lt.name + '</b><span>' + lt.role + '</span></div>';
+  const bgHTML = (theme) => '<div class="bg bg-' + theme + '"></div>';
+  function miniHTML(i, s) {
+    const item = ITEMS[i];
+    if (item.lt) return '<div class="checker"></div>' + ltHTML(item.lt, true);
+    return bgHTML(item.theme) + slideHTML(i, s);
+  }
+
+  function nextPos(pos) {
+    if (pos.s + 1 < ITEMS[pos.i].slides.length) return { i: pos.i, s: pos.s + 1 };
+    if (pos.i + 1 < ITEMS.length) return { i: pos.i + 1, s: 0 };
+    return null;
+  }
+  function prevPos(pos) {
+    if (pos.s > 0) return { i: pos.i, s: pos.s - 1 };
+    if (pos.i > 0) return { i: pos.i - 1, s: ITEMS[pos.i - 1].slides.length - 1 };
+    return null;
+  }
+  function cuedPos() {
+    return state.sel !== state.live.i ? { i: state.sel, s: 0 } : nextPos(state.live);
+  }
+
+  function take(pos) {
+    if (!pos) return;
+    const item = ITEMS[pos.i];
+    state.live = { i: pos.i, s: pos.s };
+    state.sel = pos.i;
+    if (item.lt) {
+      state.lt = pos.i;
+    } else {
+      if (item.theme !== state.bg) state.isBgOn = true;
+      state.bg = item.theme;
+      state.isSlideOn = true;
+    }
+    render();
+  }
+  function jumpTo(label) {
+    if (isLt(state.live.i)) return;
+    const s = ITEMS[state.live.i].slides.findIndex((sl) => sl.label === label);
+    if (s >= 0) take({ i: state.live.i, s });
+  }
+
+  const actions = {
+    next: () => take(cuedPos()),
+    fwd: () => take(nextPos(state.live)),
+    back: () => take(prevPos(state.live)),
+    up: () => { state.sel = Math.max(0, state.sel - 1); render(); },
+    down: () => { state.sel = Math.min(ITEMS.length - 1, state.sel + 1); render(); },
+    chorus: () => jumpTo('C'),
+    clearBg: () => { state.isBgOn = false; render(); },
+    clearSlide: () => { state.isSlideOn = false; render(); },
+    clearLt: () => { state.lt = null; render(); },
+    clearAll: () => { state.isSlideOn = false; state.lt = null; render(); },
+    black: () => { state.isBlack = !state.isBlack; render(); }
+  };
+  function run(act) {
+    if (act.startsWith('verse')) return jumpTo('V' + act.slice(5));
+    if (actions[act]) actions[act]();
+  }
+
+  function layer(el) {
+    const frames = el.querySelectorAll('.f');
+    return { frames, cur: null, key: null };
+  }
+  const bgLayer = layer(projector.querySelector('.L-bg'));
+  const slideLayer = layer(projector.querySelector('.L-slide'));
+  function swap(l, key, html) {
+    if (l.key === key) return;
+    l.key = key;
+    const next = l.cur === l.frames[0] ? l.frames[1] : l.frames[0];
+    next.innerHTML = html;
+    next.classList.add('on');
+    if (l.cur) l.cur.classList.remove('on');
+    l.cur = next;
+  }
+
+  let ltKey = null;
+  function renderProjector() {
+    const { live } = state;
+    swap(bgLayer, state.isBgOn ? state.bg : 'off', state.isBgOn ? bgHTML(state.bg) : '');
+    const slideKey = state.isSlideOn && !isLt(live.i) ? live.i + ':' + live.s : state.isSlideOn ? slideLayer.key : 'off';
+    swap(slideLayer, slideKey, slideKey === 'off' ? '' : slideHTML(+slideKey.split(':')[0], +slideKey.split(':')[1]));
+    const wantLt = state.lt === null ? 'off' : String(state.lt);
+    if (wantLt !== ltKey) {
+      const el = $('lt-layer');
+      const old = el.querySelector('.lt');
+      if (old) { old.classList.remove('on'); setTimeout(() => old.remove(), 500); }
+      if (state.lt !== null) {
+        el.insertAdjacentHTML('beforeend', ltHTML(ITEMS[state.lt].lt, false));
+        const fresh = el.lastElementChild;
+        requestAnimationFrame(() => requestAnimationFrame(() => fresh.classList.add('on')));
+      }
+      ltKey = wantLt;
+    }
+    rig.classList.toggle('is-black', state.isBlack);
+  }
+
+  function onScreenText() {
+    if (state.isBlack) return 'Black screen';
+    const parts = [];
+    if (state.isSlideOn && slideLayer.key && slideLayer.key !== 'off') {
+      const [i, s] = slideLayer.key.split(':').map(Number);
+      parts.push(ITEMS[i].title + ', ' + labelOf(ITEMS[i].slides[s]));
+    }
+    if (state.lt !== null) parts.push('lower third: ' + ITEMS[state.lt].lt.name);
+    return parts.length ? parts.join(' + ') : state.isBgOn ? 'Background only' : 'Nothing';
+  }
+  function describe(pos) {
+    if (!pos) return 'End of the service';
+    const item = ITEMS[pos.i];
+    return item.title + ', ' + labelOf(item.slides[pos.s]);
+  }
+
+  let builtSel = -1;
+  function renderOrder() {
+    const ol = $('order');
+    if (!ol.children.length) {
+      ol.innerHTML = ITEMS.map((it, i) => '<li><button type="button" data-item="' + i + '"><span class="ty">' + it.type + '</span><span class="ti">' + it.title + '</span><span class="st"></span></button></li>').join('');
+    }
+    ol.querySelectorAll('button').forEach((b) => {
+      const i = +b.dataset.item;
+      const isLive = i === state.live.i;
+      b.classList.toggle('is-live', isLive);
+      b.classList.toggle('is-sel', i === state.sel);
+      b.querySelector('.st').textContent = isLive ? 'LIVE' : '';
+    });
+  }
+  function renderThumbs() {
+    const box = $('thumbs');
+    const item = ITEMS[state.sel];
+    if (builtSel !== state.sel) {
+      const hadFocus = box.contains(document.activeElement);
+      box.innerHTML = item.slides.map((sl, s) => '<button class="thumb" type="button" data-s="' + s + '" aria-label="Show ' + item.title + ', ' + labelOf(sl) + '"><div class="scrn">' + miniHTML(state.sel, s) + '</div><span class="cap"><b>' + sl.label + '</b></span></button>').join('');
+      $('sel-title').textContent = item.title;
+      $('sel-meta').textContent = item.meta || item.type;
+      builtSel = state.sel;
+      if (hadFocus) projector.focus({ preventScroll: true });
+    }
+    const cue = cuedPos();
+    box.querySelectorAll('.thumb').forEach((t) => {
+      const s = +t.dataset.s;
+      t.classList.toggle('is-live', state.live.i === state.sel && state.live.s === s);
+      t.classList.toggle('is-next', !!cue && cue.i === state.sel && cue.s === s && !(state.live.i === state.sel && state.live.s === s));
+    });
+  }
+  function renderStage() {
+    const sl = slideAt(state.live);
+    const showing = state.isSlideOn && !isLt(state.live.i) && !state.isBlack;
+    $('stage-now').innerHTML = showing ? sl.main.map(plain).join('<br>') : '<span style="color:var(--booth-muted)">(clear)</span>';
+    const cue = cuedPos();
+    const nx = cue && slideAt(cue);
+    $('stage-next').textContent = !cue ? 'End of the service' : ITEMS[cue.i].lt ? 'Lower third: ' + ITEMS[cue.i].lt.name : nx.main.map(plain).join(' / ');
+  }
+  function renderLights() {
+    const on = { bg: state.isBgOn, slide: state.isSlideOn && slideLayer.key !== 'off', lt: state.lt !== null, audio: false };
+    $('layer-lights').querySelectorAll('[data-layer]').forEach((el) => el.classList.toggle('on', !state.isBlack && on[el.dataset.layer]));
+    const onair = $('onair');
+    onair.textContent = state.isBlack ? 'BLACK' : 'LIVE';
+    onair.classList.toggle('black', state.isBlack);
+  }
+  function renderVolunteer() {
+    const scr = $('vol-screen');
+    let html = '';
+    if (!state.isBlack) {
+      if (state.isBgOn) html += bgHTML(state.bg);
+      if (state.isSlideOn && slideLayer.key && slideLayer.key !== 'off') {
+        const [i, s] = slideLayer.key.split(':').map(Number);
+        html += slideHTML(i, s);
+      }
+      if (state.lt !== null) html += ltHTML(ITEMS[state.lt].lt, true);
+    }
+    scr.innerHTML = html;
+    $('vol-now').textContent = onScreenText();
+    $('vol-next').textContent = describe(nextPos(state.live));
+  }
+
+  let lastSaid = '';
+  function render() {
+    renderProjector();
+    renderOrder();
+    renderThumbs();
+    renderStage();
+    renderLights();
+    renderVolunteer();
+    const said = 'On screen: ' + onScreenText();
+    if (said !== lastSaid) { $('announce').textContent = said; lastSaid = said; }
+  }
+
+  const KEYS = { ' ': 'next', ArrowRight: 'fwd', PageDown: 'fwd', ArrowLeft: 'back', PageUp: 'back', ArrowUp: 'up', ArrowDown: 'down', Escape: 'black', F1: 'clearBg', F2: 'clearSlide', F3: 'clearLt', c: 'chorus', C: 'chorus' };
+  rig.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    let act = KEYS[e.key];
+    if (!act && /^[1-9]$/.test(e.key)) act = 'verse' + e.key;
+    if (!act) return;
+    e.preventDefault();
+    run(act);
+    const cap = document.querySelector('.key[data-act="' + act + '"]');
+    if (cap) { cap.classList.add('hit'); setTimeout(() => cap.classList.remove('hit'), 140); }
+  });
+  rig.addEventListener('keyup', (e) => { if (e.key === ' ') e.preventDefault(); });
+
+  document.addEventListener('click', (e) => {
+    const actBtn = e.target.closest('[data-act]');
+    if (actBtn) { run(actBtn.dataset.act); return; }
+    const order = e.target.closest('[data-item]');
+    if (order) { state.sel = +order.dataset.item; render(); return; }
+    const thumb = e.target.closest('.thumb');
+    if (thumb) take({ i: state.sel, s: +thumb.dataset.s });
+  });
+  projector.addEventListener('click', () => { projector.focus({ preventScroll: true }); });
+  $('take').addEventListener('click', () => { run('next'); projector.focus({ preventScroll: true }); });
+
+  function tick() {
+    const t = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const txt = pad(t.getHours()) + ':' + pad(t.getMinutes()) + ':' + pad(t.getSeconds());
+    document.querySelectorAll('[data-clock]').forEach((el) => { el.textContent = txt; });
+  }
+  tick();
+  setInterval(tick, 1000);
+
+  const bi = $('bi');
+  $('bi-two').addEventListener('click', () => { bi.classList.remove('solo'); $('bi-two').setAttribute('aria-pressed', 'true'); $('bi-one').setAttribute('aria-pressed', 'false'); });
+  $('bi-one').addEventListener('click', () => { bi.classList.add('solo'); $('bi-one').setAttribute('aria-pressed', 'true'); $('bi-two').setAttribute('aria-pressed', 'false'); });
+  $('bi-boxes').addEventListener('change', (e) => bi.classList.toggle('boxes', e.target.checked));
+
+  const root = document.documentElement;
+  const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+  const isDark = () => root.dataset.theme ? root.dataset.theme === 'dark' : darkQuery.matches;
+  function syncLights() {
+    const down = isDark();
+    $('lights').setAttribute('aria-pressed', String(down));
+    $('lights-state').textContent = down ? 'Down' : 'Up';
+  }
+  try { const saved = localStorage.getItem('openstage-house-lights'); if (saved === 'dark' || saved === 'light') root.dataset.theme = saved; } catch (_) {}
+  syncLights();
+  darkQuery.addEventListener('change', syncLights);
+  new MutationObserver(syncLights).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+  $('lights').addEventListener('click', () => {
+    const want = isDark() ? 'light' : 'dark';
+    root.dataset.theme = want;
+    try { localStorage.setItem('openstage-house-lights', want); } catch (_) {}
+  });
+
+  const outage = $('outage');
+  const boot = $('boot');
+  const plug = $('plug');
+  let outageTimers = [];
+  function later(ms, fn) { outageTimers.push(setTimeout(fn, ms)); }
+  function bootLines() {
+    const cue = slideAt(state.live);
+    const layers = [];
+    if (state.isBgOn) layers.push('background');
+    if (state.isSlideOn) layers.push('slides');
+    if (state.lt !== null) layers.push('lower third');
+    return [
+      ['OpenStage 0.0.0', ''],
+      ['power restored', 'ok'],
+      ['engine started', 'ok'],
+      ['reading live-state.json', 'ok'],
+      ['service    Sunday service, ' + ITEMS.length + ' items', ''],
+      ['on screen  ' + ITEMS[state.live.i].title + ', ' + labelOf(cue), 'hi'],
+      ['layers     ' + (layers.join(', ') || 'none') + (state.isBlack ? ' (black)' : ''), ''],
+      ['projector, stage reconnected', 'ok']
+    ];
+  }
+  function endOutage() {
+    outageTimers.forEach(clearTimeout);
+    outageTimers = [];
+    outage.classList.add('fading');
+    root.classList.add('warmup');
+    plug.setAttribute('aria-pressed', 'false');
+    setTimeout(() => {
+      outage.hidden = true;
+      outage.classList.remove('fading');
+      root.style.overflow = '';
+      plug.focus({ preventScroll: true });
+      showToast('Back where you were: ' + onScreenText() + '.');
+    }, reduced ? 10 : 900);
+    setTimeout(() => root.classList.remove('warmup'), 2600);
+  }
+  function cutPower() {
+    plug.setAttribute('aria-pressed', 'true');
+    boot.innerHTML = '';
+    const crt = $('crt');
+    crt.style.animation = 'none';
+    void crt.offsetWidth;
+    crt.style.animation = '';
+    later(reduced ? 0 : 160, () => {
+      outage.hidden = false;
+      root.style.overflow = 'hidden';
+      $('skip').focus({ preventScroll: true });
+    });
+    const lines = bootLines();
+    const start = reduced ? 200 : 1500;
+    lines.forEach((line, n) => later(start + n * (reduced ? 60 : 300), () => {
+      const li = document.createElement('li');
+      const label = document.createElement('span');
+      label.textContent = line[0];
+      if (line[1] === 'hi') label.className = 'hi';
+      li.appendChild(label);
+      if (line[1] === 'ok') { const ok = document.createElement('span'); ok.className = 'ok'; ok.textContent = 'ok'; li.appendChild(ok); }
+      boot.appendChild(li);
+    }));
+    later(start + lines.length * (reduced ? 60 : 300) + 900, endOutage);
+  }
+  plug.addEventListener('click', () => { if (outage.hidden) cutPower(); });
+  $('skip').addEventListener('click', endOutage);
+  outage.addEventListener('keydown', (e) => { if (e.key === 'Escape') endOutage(); });
+
+  let toastTimer;
+  function showToast(text) {
+    $('toast-text').textContent = text;
+    $('toast').classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => $('toast').classList.remove('on'), 4200);
+  }
+
+  const sections = [...document.querySelectorAll('main .sec')];
+  const railLinks = [...document.querySelectorAll('#rail a')];
+  function setLive(idx) {
+    railLinks.forEach((a, n) => { a.classList.toggle('is-live', n === idx); a.classList.toggle('is-next', n === idx + 1); });
+    $('r-live').textContent = sections[idx].dataset.title;
+    $('r-next').textContent = sections[idx + 1] ? sections[idx + 1].dataset.title : 'End';
+  }
+  setLive(0);
+  const spy = new IntersectionObserver((entries) => {
+    entries.forEach((en) => { if (en.isIntersecting) setLive(sections.indexOf(en.target)); });
+  }, { rootMargin: '-45% 0px -50% 0px' });
+  sections.forEach((s) => spy.observe(s));
+
+  const canvas = $('dust');
+  const ctx = canvas.getContext('2d');
+  let motes = [];
+  let w = 0, h = 0, raf = 0, isRoomVisible = true;
+  function sizeDust() {
+    const r = canvas.getBoundingClientRect();
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    w = r.width; h = r.height;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    motes = Array.from({ length: Math.round(w / 9) }, spawn);
+  }
+  function spawn() {
+    const t = Math.sqrt(Math.random());
+    return { t, u: Math.random() - 0.5, r: 0.4 + Math.random() * 1.3, vt: -(0.0002 + Math.random() * 0.0006), vu: (Math.random() - 0.5) * 0.0015, a: 0.2 + Math.random() * 0.6, ph: Math.random() * 6.28 };
+  }
+  function strength() {
+    return parseFloat(getComputedStyle(root).getPropertyValue('--beam')) || 0.4;
+  }
+  let beamStrength = strength();
+  new MutationObserver(() => { beamStrength = strength(); }).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+  darkQuery.addEventListener('change', () => { beamStrength = strength(); });
+  function draw(now) {
+    ctx.clearRect(0, 0, w, h);
+    const dim = state.isBlack ? 0.15 : 1;
+    for (const m of motes) {
+      m.t += m.vt; m.u += m.vu;
+      if (m.t < 0.05 || Math.abs(m.u) > 0.48) Object.assign(m, spawn(), { t: 0.95 + Math.random() * 0.05 });
+      const x = w / 2 + m.u * w * m.t;
+      const y = m.t * h;
+      const flick = 0.6 + 0.4 * Math.sin(now / 700 + m.ph);
+      ctx.globalAlpha = m.a * flick * beamStrength * dim * (1 - Math.abs(m.u) * 1.4);
+      ctx.fillStyle = '#ffe2b0';
+      ctx.beginPath();
+      ctx.arc(x, y, m.r, 0, 6.283);
+      ctx.fill();
+    }
+    raf = isRoomVisible ? requestAnimationFrame(draw) : 0;
+  }
+  if (!reduced) {
+    sizeDust();
+    new ResizeObserver(sizeDust).observe(canvas);
+    new IntersectionObserver((en) => {
+      isRoomVisible = en[0].isIntersecting;
+      if (isRoomVisible && !raf) raf = requestAnimationFrame(draw);
+    }).observe(canvas);
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

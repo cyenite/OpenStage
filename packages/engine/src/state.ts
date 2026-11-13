@@ -1,12 +1,18 @@
-import { initialStage, stageLayouts, type Command, type Deck, type EngineState, type Id, type Library, type LiveLayers, type SlideRef, type StageState, type Timing } from '@openstage/shared'
+import { initialStage, instantId, isInstantId, stageLayouts, type Command, type Deck, type EngineState, type Id, type Library, type LiveLayers, type Playback, type SlideRef, type StageState, type Timing } from '@openstage/shared'
+import { cleanInstant, pruneInstant } from './instant'
 
-export const emptyLive: LiveLayers = { slide: null, audio: null, background: null, lowerThird: null }
+export const emptyLive: LiveLayers = { slide: null, audio: null, background: null, lowerThird: null, media: null, overlays: [] }
 
 export const noTiming: Timing = { itemId: null, itemStartedAt: null, serviceStartedAt: null }
 
 export function initialState(decks: Deck[], defaultBackgroundId: Id | null, serviceId: Id | null): EngineState {
   const first = decks.find((d) => d.slides.length > 0)
   return {
+    isBlack: false,
+    outputsOff: [],
+    backgroundPickedFor: null,
+    playback: null,
+    instant: {},
     stage: initialStage,
     serviceId,
     timing: noTiming,
@@ -26,9 +32,16 @@ export function reduce(state: EngineState, command: Command, decks: Deck[]): Eng
     }
     case 'preview.set':
       if (!isValid(decks, command.ref)) return state
-      return { ...state, preview: command.ref, selectedItemId: command.ref.itemId }
+      return { ...state, preview: command.ref, selectedItemId: selectable(state, command.ref.itemId) }
+    case 'instant.show': {
+      const ref = { itemId: instantId(command.source), index: command.index }
+      if (!isValid(decks, ref)) return state
+      return command.isLive ? goLive(state, ref, decks) : { ...state, preview: ref }
+    }
     case 'live.take':
       return state.preview ? goLive(state, state.preview, decks) : state
+    case 'live.show':
+      return isValid(decks, command.ref) ? goLive(state, command.ref, decks) : state
     case 'live.next': {
       if (!state.live.slide) return state.preview ? goLive(state, state.preview, decks) : state
       const next = step(decks, state.live.slide, 1)
@@ -40,13 +53,21 @@ export function reduce(state: EngineState, command: Command, decks: Deck[]): Eng
       return previous ? goLive(state, previous, decks) : state
     }
     case 'layer.clear':
+      if (command.layer === 'overlays') return { ...state, live: { ...state.live, overlays: [] } }
+      if (command.layer === 'media') return { ...state, playback: null, live: { ...state.live, media: null } }
       return { ...state, live: { ...state.live, [command.layer]: null } }
     case 'layer.clearAll':
-      return { ...state, live: emptyLive }
+      return { ...state, isBlack: false, playback: null, live: emptyLive }
     case 'background.set':
-      return { ...state, live: { ...state.live, background: command.backgroundId } }
+      return { ...state, isBlack: false, backgroundPickedFor: state.live.slide?.itemId ?? null, live: { ...state.live, background: command.backgroundId } }
     case 'lowerThird.set':
-      return { ...state, live: { ...state.live, lowerThird: command.lowerThirdId } }
+      return { ...state, isBlack: false, live: { ...state.live, lowerThird: command.lowerThirdId } }
+    case 'screens.black':
+      return { ...state, isBlack: command.isBlack === true }
+    case 'output.power': {
+      const others = state.outputsOff.filter((id) => id !== command.outputId)
+      return { ...state, outputsOff: command.isOn === false ? [...others, String(command.outputId)] : others }
+    }
     case 'audio.set':
       return { ...state, live: { ...state.live, audio: command.audioCueId } }
     default:
@@ -54,10 +75,22 @@ export function reduce(state: EngineState, command: Command, decks: Deck[]): Eng
   }
 }
 
+/** Showing a slide lifts a black screen. A live background pick lasts only while its item is on screen. */
 function goLive(state: EngineState, ref: SlideRef, decks: Deck[]): EngineState {
   const preview = step(decks, ref, 1) ?? ref
-  return { ...state, preview, selectedItemId: preview.itemId, live: { ...state.live, slide: ref } }
+  const isSameItem = state.live.slide?.itemId === ref.itemId
+  return {
+    ...state,
+    isBlack: false,
+    backgroundPickedFor: isSameItem ? state.backgroundPickedFor : null,
+    preview,
+    selectedItemId: selectable(state, ref.itemId),
+    live: { ...state.live, slide: ref },
+  }
 }
+
+/** Library slides never become the selected service item, so adds still land after what the operator picked. */
+const selectable = (state: EngineState, itemId: Id) => (isInstantId(itemId) ? state.selectedItemId : itemId)
 
 /** Moves within a deck, and forward into the next non-empty deck at the end of one. */
 function step(decks: Deck[], ref: SlideRef, delta: 1 | -1): SlideRef | null {
@@ -66,8 +99,10 @@ function step(decks: Deck[], ref: SlideRef, delta: 1 | -1): SlideRef | null {
   if (!deck) return null
   const index = ref.index + delta
   if (index >= 0 && index < deck.slides.length) return { itemId: deck.itemId, index }
-  if (delta < 0) return null
-  const following = decks.slice(deckIndex + 1).find((d) => d.slides.length > 0)
+  if (deck.isLooping && deck.slides.length > 0) return { itemId: deck.itemId, index: (index + deck.slides.length) % deck.slides.length }
+  // A library deck ends where it ends; the service never runs on into it, or out of it.
+  if (delta < 0 || isInstantId(deck.itemId)) return null
+  const following = decks.slice(deckIndex + 1).find((d) => d.slides.length > 0 && !isInstantId(d.itemId))
   return following ? { itemId: following.itemId, index: 0 } : null
 }
 
@@ -77,19 +112,30 @@ export function sanitize(raw: Partial<EngineState>, decks: Deck[], library: Libr
   const pick = (records: Record<Id, unknown>, id: Id | null) => (id && Object.hasOwn(records, id) ? id : null)
   const timing = { ...noTiming, ...raw.timing }
   const isTimed = decks.some((d) => d.itemId === timing.itemId) && typeof timing.itemStartedAt === 'number'
-  return {
+  const preview = isValid(decks, raw.preview ?? null) ? raw.preview! : null
+  const slide = isValid(decks, live.slide) ? live.slide : null
+  const media = pick(library.media, live.media)
+  const outputsOff = Array.isArray(raw.outputsOff) ? raw.outputsOff.filter((id): id is string => typeof id === 'string') : []
+  return pruneInstant({
+    isBlack: raw.isBlack === true,
+    outputsOff,
+    backgroundPickedFor: typeof raw.backgroundPickedFor === 'string' && raw.backgroundPickedFor === slide?.itemId ? raw.backgroundPickedFor : null,
+    instant: cleanInstant(raw.instant),
     stage: sanitizeStage(raw.stage),
     serviceId: pick(library.services, raw.serviceId ?? null),
     timing: isTimed ? timing : { ...noTiming, serviceStartedAt: typeof timing.serviceStartedAt === 'number' ? timing.serviceStartedAt : null },
-    preview: isValid(decks, raw.preview ?? null) ? raw.preview! : null,
-    selectedItemId: decks.some((d) => d.itemId === raw.selectedItemId) ? raw.selectedItemId! : null,
+    preview,
+    selectedItemId: decks.some((d) => d.itemId === raw.selectedItemId && !isInstantId(d.itemId)) ? raw.selectedItemId! : null,
+    playback: media && isPlayback(raw.playback) ? raw.playback : null,
     live: {
-      slide: isValid(decks, live.slide) ? live.slide : null,
+      slide,
       audio: pick(library.audioCues, live.audio),
       background: pick(library.backgrounds, live.background),
       lowerThird: pick(library.lowerThirds, live.lowerThird),
+      media,
+      overlays: Array.isArray(live.overlays) ? [...new Set(live.overlays.filter((id) => typeof id === 'string' && Object.hasOwn(library.overlays, id)))] : [],
     },
-  }
+  })
 }
 
 function sanitizeStage(raw: Partial<StageState> | undefined): StageState {
@@ -109,4 +155,10 @@ export function isValid(decks: Deck[], ref: SlideRef | null): ref is SlideRef {
   if (!ref) return false
   const deck = decks.find((d) => d.itemId === ref.itemId)
   return !!deck && Number.isInteger(ref.index) && ref.index >= 0 && ref.index < deck.slides.length
+}
+
+function isPlayback(raw: unknown): raw is Playback {
+  const p = raw as Partial<Playback> | null
+  const isNumber = (n: unknown) => typeof n === 'number' && Number.isFinite(n)
+  return !!p && isNumber(p.startedAt) && isNumber(p.position) && isNumber(p.at) && typeof p.isPaused === 'boolean'
 }

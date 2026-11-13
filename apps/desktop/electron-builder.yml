@@ -1,0 +1,33 @@
+appId: io.github.cyenite.openstage
+productName: OpenStage
+artifactName: OpenStage-${version}-${os}-${arch}.${ext}
+directories:
+  output: release
+files:
+  - out/**
+  - resources/**
+  - package.json
+publish: null
+linux:
+  executableName: openstage
+  syncDesktopName: true
+  category: AudioVideo
+  synopsis: Church presentation software
+  target:
+    - AppImage
+    - deb
+deb:
+  depends: []
+win:
+  target: nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+mac:
+  category: public.app-category.productivity
+  identity: null
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64

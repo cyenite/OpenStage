@@ -21,6 +21,8 @@ export interface BibleInfo {
 /** A bundled or imported Bible: books by USFM id, chapters, then verses from verse 1 (index 0). */
 export interface BibleText extends BibleInfo {
   books: Partial<Record<BookId, string[][]>>
+  /** The bible.com version id, for Bibles downloaded from there. */
+  remoteId?: number
 }
 
 export type ParsedReference = { ok: true; ref: PassageRef } | { ok: false; error: string; suggestions: BookId[] }
@@ -168,6 +170,7 @@ export function passageSlides(ref: PassageRef, rows: VerseRow[], layout: Passage
     const numbered = group.length > 1
     const span = first.label === last.label ? first.label : `${first.label}-${last.label}`
     return {
+      verse: first.verse,
       kind: 'scripture',
       label: numbered ? `Verses ${span}` : `Verse ${span}`,
       lines: group.map((u) => (numbered ? `${u.verse} ${u.main}` : u.main)),

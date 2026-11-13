@@ -1,8 +1,10 @@
 import type { BackgroundRender } from './render'
+import type { BookId } from './bible-books'
 import type { BibleInfo, PassageRef } from './scripture'
 import type { ServiceReadiness } from './services'
 import type { StageLayoutKey, StageState } from './stage'
 import type { BoxPatch, Theme, ThemeBoxRole } from './themes'
+import type { MediaItem, Overlay, Page } from './slides'
 import type { AudioCue, Background, Deck, DeckSlide, DocumentKind, DocumentRef, DocumentTypes, HeadingKind, Id, LowerThird, SectionKind, Service, ServiceTeam, ServiceTemplate, Song, TemplateSlot } from './library'
 import type { LayerKey } from './layers'
 import type { RenderState } from './render'
@@ -17,6 +19,18 @@ export interface LiveLayers {
   audio: Id | null
   background: Id | null
   lowerThird: Id | null
+  /** A video or image playing full screen, above the background. */
+  media: Id | null
+  /** Bottom first; several can be on at once. */
+  overlays: Id[]
+}
+
+/** Where the live video is: `position` seconds at `at` (epoch milliseconds), moving on from there unless paused. */
+export interface Playback {
+  startedAt: number
+  position: number
+  at: number
+  isPaused: boolean
 }
 
 /** When the live item and the service went live, for the timeline; epoch milliseconds. */
@@ -26,7 +40,23 @@ export interface Timing {
   serviceStartedAt: number | null
 }
 
+/** A song or passage shown straight from the library, without being in the service. */
+export type InstantSource =
+  | { type: 'song'; songId: Id; arrangementId?: Id }
+  | { type: 'scripture'; ref: PassageRef; translations: string[]; versesPerSlide: number }
+  | { type: 'presentation'; presentationId: Id }
+
 export interface EngineState {
+  /** Black screen: the audience screens show nothing until it is lifted or a slide is shown; the layers underneath are kept. */
+  isBlack: boolean
+  /** Outputs switched off by the operator; they show nothing while their window stays where it is. */
+  outputsOff: string[]
+  /** The item that was live when the operator picked the live background; for that item the pick beats its own and its theme's. */
+  backgroundPickedFor: Id | null
+  /** Set while the media layer shows something. */
+  playback: Playback | null
+  /** Sources of what Preview and Live show from the library, by their deck's item id; only those still referenced are kept. */
+  instant: Record<Id, InstantSource>
   stage: StageState
   serviceId: Id | null
   timing: Timing
@@ -39,14 +69,44 @@ export interface EngineState {
 export type Command =
   | { type: 'item.select'; itemId: Id }
   | { type: 'preview.set'; ref: SlideRef }
+  /** Shows a slide of a song or passage that need not be in the service, in Preview or straight to Live. */
+  | { type: 'instant.show'; source: InstantSource; index: number; isLive: boolean }
   | { type: 'live.take' }
+  /** Shows a service slide now, without passing through Preview. */
+  | { type: 'live.show'; ref: SlideRef }
   | { type: 'live.next' }
   | { type: 'live.previous' }
   | { type: 'layer.clear'; layer: LayerKey }
   | { type: 'layer.clearAll' }
   | { type: 'background.set'; backgroundId: Id }
   | { type: 'lowerThird.set'; lowerThirdId: Id }
+  /** Creates or replaces a lower third in the library. */
+  | { type: 'lowerThird.save'; lowerThird: LowerThird }
+  | { type: 'lowerThird.delete'; lowerThirdId: Id }
+  | { type: 'screens.black'; isBlack: boolean }
+  | { type: 'output.power'; outputId: string; isOn: boolean }
+  | { type: 'overlay.save'; overlay: Overlay }
+  | { type: 'overlay.delete'; overlayId: Id }
+  | { type: 'overlay.show'; overlayId: Id }
+  | { type: 'overlay.hide'; overlayId: Id }
+  /** Copies a file the operator picked into the library's media folder. */
+  | { type: 'media.import'; mediaId: Id; name: string; path: string; mediaType: 'image' | 'video'; duration: number | null }
+  | { type: 'media.update'; mediaId: Id; changes: Partial<MediaItem> }
+  | { type: 'media.delete'; mediaId: Id }
+  /** Plays a video, or shows an image, full screen on the media layer from its start. */
+  | { type: 'media.show'; mediaId: Id }
+  | { type: 'media.control'; action: 'play' | 'pause' | 'restart' }
+  | { type: 'presentation.create'; presentationId: Id; title: string; fromPresentationId?: Id }
+  | { type: 'presentation.delete'; presentationId: Id }
+  | { type: 'presentation.edit'; presentationId: Id; edit: PresentationEdit }
   | { type: 'audio.set'; audioCueId: Id }
+  /** Locks the operator window to volunteer controls; a PIN must be given the first time, to set it. */
+  | { type: 'volunteer.lock'; pin?: string }
+  /** Only while unlocked. */
+  | { type: 'volunteer.setPin'; pin: string }
+  /** Runs the service off-air: the screens keep what they showed, and stopping puts everything back. */
+  | { type: 'rehearsal.start' }
+  | { type: 'rehearsal.stop' }
   | { type: 'stage.layout'; layout: StageLayoutKey }
   /** Null clears the message. */
   | { type: 'stage.message'; text: string | null }
@@ -77,6 +137,12 @@ export type Command =
    * service after the selected item and previews its first slide.
    */
   | { type: 'scripture.quick'; text: string; itemId: Id; passageId: Id }
+  /** Starts, or resumes after a failure, downloading a version from the bible.com catalogue. */
+  | { type: 'bible.download'; version: RemoteVersion }
+  /** Stops a download; the chapters already fetched are kept for a later resume. */
+  | { type: 'bible.cancelDownload'; versionId: number }
+  /** Removes a downloaded or imported Bible from this computer; bundled ones stay. */
+  | { type: 'bible.remove'; code: string }
   | { type: 'document.undo'; ref: DocumentRef }
   | { type: 'document.redo'; ref: DocumentRef }
 
@@ -98,10 +164,11 @@ export type SongEdit =
 
 export type ServiceEdit =
   /** The engine fills in the song's first arrangement when `arrangementId` is left out. */
-  | { type: 'service.addSong'; itemId: Id; songId: Id; arrangementId?: Id }
+  | { type: 'service.addSong'; itemId: Id; songId: Id; arrangementId?: Id; afterItemId?: Id }
   | { type: 'service.removeItem'; itemId: Id }
   | { type: 'service.setTheme'; themeId: Id }
   | { type: 'service.addPassage'; itemId: Id; passageId: Id; afterItemId?: Id }
+  | { type: 'service.addPresentation'; itemId: Id; presentationId: Id; afterItemId?: Id }
   | { type: 'service.setTranslations'; translations: string[] }
   | { type: 'service.setDetails'; name?: string; date?: string; time?: string }
   | { type: 'service.setTeam'; team: ServiceTeam }
@@ -110,6 +177,8 @@ export type ServiceEdit =
   | { type: 'service.updateItem'; itemId: Id; changes: ItemChanges }
   /** Puts a song or passage in a template placeholder; the engine fills in the song's first arrangement. */
   | { type: 'service.fillSlot'; itemId: Id; songId?: Id; passageId?: Id; arrangementId?: Id }
+  /** One background for several items at once, as one undo step; null puts them back on their theme's fill. */
+  | { type: 'service.setBackground'; itemIds: Id[]; backgroundId: Id | null }
 
 /** Null clears an override. */
 export interface ItemChanges {
@@ -117,6 +186,7 @@ export interface ItemChanges {
   title?: string
   minutes?: number | null
   themeId?: Id | null
+  backgroundId?: Id | null
   languages?: string[] | null
   arrangementId?: Id
 }
@@ -134,18 +204,40 @@ export type PassageEdit =
   | { type: 'passage.setVersesPerSlide'; versesPerSlide: number }
   | { type: 'passage.setSplitLong'; splitLong: boolean }
 
+export type PresentationEdit =
+  | { type: 'presentation.setTitle'; title: string }
+  | { type: 'presentation.setLooping'; isLooping: boolean }
+  /** At the end when `afterPageId` is left out. */
+  | { type: 'presentation.addPage'; page: Page; afterPageId?: Id }
+  /** Replaces the page with the same id. */
+  | { type: 'presentation.setPage'; page: Page }
+  | { type: 'presentation.removePage'; pageId: Id }
+  | { type: 'presentation.movePage'; pageId: Id; toIndex: number }
+
 export type ThemeEdit =
   | { type: 'theme.setName'; name: string }
   | { type: 'theme.setFill'; fill: BackgroundRender | null }
   | { type: 'theme.setBox'; role: ThemeBoxRole; style: BoxPatch }
 
-export type EditableKind = 'songs' | 'services' | 'themes' | 'passages' | 'templates'
+export type EditableKind = 'songs' | 'services' | 'themes' | 'passages' | 'templates' | 'presentations'
 
 export type LibraryQuery =
   | { type: 'library.search'; text: string; kind?: DocumentKind; limit?: number }
   | { type: 'library.list'; kind: DocumentKind }
   | { type: 'scripture.slides'; passageId: Id }
   | { type: 'song.outlines'; songIds: Id[] }
+  /** The slides a song shows when presented from the library: its first arrangement unless one is given. */
+  | { type: 'song.slides'; songId: Id; arrangementId?: Id }
+  /** One chapter in up to two Bibles, with the slide each verse starts on when the chapter is presented. */
+  | { type: 'bible.chapter'; book: BookId; chapter: number; translations: string[] }
+  | { type: 'volunteer.unlock'; pin: string }
+  /** The bible.com catalogue for one language tag; asks the network, so it can take a while. */
+  | { type: 'bible.catalog'; languageTag: string }
+  /** The languages an online song catalogue offers; asks the network. */
+  | { type: 'songs.languages'; source: SongSourceKey }
+  | { type: 'songs.catalog'; source: SongSourceKey; language: string }
+  /** Reads the chosen catalogue songs into an import plan, as `import.preview` does for files. */
+  | { type: 'songs.preview'; source: SongSourceKey; language: string; songIds: number[] }
   /** Reads dropped or picked files and says what importing them would do; nothing is saved yet. */
   | { type: 'import.preview'; files: ImportFile[] }
   /** Carries out a preview with the operator's choices and reports what happened. */
@@ -202,8 +294,71 @@ export type QueryResult =
   | { type: 'hits'; hits: SearchHit[] }
   | { type: 'slides'; slides: DeckSlide[] }
   | { type: 'outlines'; outlines: SongOutline[] }
+  | { type: 'chapter'; chapter: ChapterView | null }
+  | { type: 'catalog'; versions: RemoteVersion[]; error: string | null }
+  | { type: 'songLanguages'; languages: SongLanguage[]; error: string | null }
+  | { type: 'songCatalog'; songs: CatalogSong[]; error: string | null }
   | { type: 'importPlan'; plan: ImportPlan }
   | { type: 'importReport'; report: ImportReport }
+  /** `waitSeconds` is set after too many wrong PINs. */
+  | { type: 'unlock'; isUnlocked: boolean; waitSeconds: number }
+
+/** Online song catalogues a church imports from on its own computer; declaration order is display order. */
+export const songSources = [{ key: 'worshipLeader', label: 'Worship Leader', site: 'songs.worshipleaderapp.com' }] as const
+
+export type SongSourceKey = (typeof songSources)[number]['key']
+
+export interface SongLanguage {
+  code: string
+  name: string
+  count: number
+}
+
+export interface CatalogSong {
+  id: number
+  title: string
+  authors: string[]
+  firstLine: string
+  /** The catalogue marks the song as copyrighted, not free to share. */
+  isRestricted: boolean
+  language: string
+}
+
+/** A version listed in the bible.com catalogue. */
+export interface RemoteVersion {
+  id: number
+  title: string
+  abbreviation: string
+  languageTag: string
+  languageName: string
+  /** ISO 639 code, the `language` the Bible gets once installed. */
+  language: string
+}
+
+export interface BibleDownload {
+  version: RemoteVersion
+  done: number
+  total: number
+  /** Why it stopped; null while it runs. */
+  error: string | null
+  /** bible.com refused this computer (403, 429 or a human check): retrying soon will not help. */
+  isRefused: boolean
+}
+
+export interface ChapterVerse {
+  verse: number
+  main: string
+  secondary: string
+  slideIndex: number
+}
+
+export interface ChapterView {
+  /** The passage to send with `instant.show` for the whole chapter. */
+  source: InstantSource & { type: 'scripture' }
+  verses: ChapterVerse[]
+  /** Chapters this book has in the main Bible, for the chapter picker. */
+  chapterCount: number
+}
 
 export interface SearchHit {
   kind: DocumentKind
@@ -214,6 +369,29 @@ export interface SearchHit {
   /** Matched terms are wrapped in \u0001 and \u0002 so the UI can highlight them. */
   snippet: string
 }
+
+/** Commands a locked operator window may still send: presenting, clearing and rehearsing, nothing that changes the library. */
+export const volunteerCommands = new Set<Command['type']>([
+  'item.select',
+  'preview.set',
+  'instant.show',
+  'live.take',
+  'live.show',
+  'screens.black',
+  'output.power',
+  'lowerThird.set',
+  'overlay.show',
+  'overlay.hide',
+  'media.show',
+  'media.control',
+  'live.next',
+  'live.previous',
+  'layer.clear',
+  'layer.clearAll',
+  'rehearsal.start',
+  'rehearsal.stop',
+  'volunteer.lock',
+])
 
 export interface ServiceSummary {
   id: Id
@@ -241,14 +419,24 @@ export interface OutputStatus {
   sentSeq: number
   ackedSeq: number
   isConnected: boolean
+  /** False while the operator has switched it off. */
+  isOn: boolean
 }
 
 export interface OperatorSnapshot {
   state: EngineState
   decks: Deck[]
+  /** Decks shown from the library rather than the service, by their `itemId` in `state.instant`. */
+  instant: Deck[]
   service: Service
-  library: { themes: Theme[]; templates: ServiceTemplate[]; backgrounds: Background[]; lowerThirds: LowerThird[]; audioCues: AudioCue[] }
+  library: { themes: Theme[]; templates: ServiceTemplate[]; backgrounds: Background[]; lowerThirds: LowerThird[]; audioCues: AudioCue[]; overlays: Overlay[]; media: MediaItem[] }
   bibles: BibleInfo[]
+  /** Codes of Bibles that shipped with the app; only the others can be removed. */
+  bundledBibles: string[]
+  /** bible.com ids of the installed versions that came from there, so the catalogue can mark them. */
+  downloadedVersionIds: number[]
+  downloads: BibleDownload[]
+  mode: { isLocked: boolean; hasPin: boolean; isRehearsing: boolean }
   /** Every service, for the calendar, ordered by date and time. */
   services: ServiceSummary[]
   /** How many songs and services point at each theme, so the UI can say why one cannot be deleted. */
@@ -257,6 +445,8 @@ export interface OperatorSnapshot {
   libraryRevision: number
   outputs: OutputStatus[]
   liveRender: RenderState
+  /** What the stage screen shows now, for its monitor in the operator window. */
+  stageRender: RenderState
   previewRender: RenderState
 }
 

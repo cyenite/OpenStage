@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest'
-import type { ClientMessage, EngineMessage, EngineState, RenderState } from '@openstage/shared'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it, vi } from 'vitest'
+import { newElement, newPage, type ClientMessage, type EngineMessage, type EngineState, type PresentationEdit, type RenderState } from '@openstage/shared'
 import { Engine, type ClientPort } from './engine'
 import { buildDecks } from './decks'
 import { initialState, reduce } from './state'
+import { BibleComClient } from './bibles/biblecom'
 import { testBibles } from './bibles/fixture'
 import { starterLibrary } from './starter-library'
 import { LibraryIndex } from './store/library-index'
@@ -45,11 +49,32 @@ describe('reduce', () => {
     expect(state.preview).toEqual({ itemId: song!.itemId, index: 1 })
   })
 
-  it('moves into the next service item at the end of a deck', () => {
+  it('moves into the next service item at the end of a deck, keeping the item on screen selected', () => {
     const last = reduce(start, { type: 'preview.set', ref: { itemId: song!.itemId, index: 7 } }, decks)
     const state = reduce(last, { type: 'live.take' }, decks)
     expect(state.preview).toEqual({ itemId: scripture!.itemId, index: 0 })
-    expect(state.selectedItemId).toBe(scripture!.itemId)
+    expect(state.selectedItemId).toBe(song!.itemId)
+  })
+
+  it('shows a slide straight away and lifts a black screen', () => {
+    const black = reduce(start, { type: 'screens.black', isBlack: true }, decks)
+    const state = reduce(black, { type: 'live.show', ref: { itemId: scripture!.itemId, index: 1 } }, decks)
+    expect(state.live.slide).toEqual({ itemId: scripture!.itemId, index: 1 })
+    expect(state.isBlack).toBe(false)
+    expect(reduce(start, { type: 'live.show', ref: { itemId: 'gone', index: 0 } }, decks)).toBe(start)
+  })
+
+  it('keeps the layers under a black screen', () => {
+    const live = reduce(start, { type: 'live.take' }, decks)
+    const black = reduce(live, { type: 'screens.black', isBlack: true }, decks)
+    expect(black.live).toEqual(live.live)
+    expect(reduce(black, { type: 'screens.black', isBlack: false }, decks)).toEqual(live)
+  })
+
+  it('switches outputs off and on', () => {
+    const off = reduce(start, { type: 'output.power', outputId: 'stage', isOn: false }, decks)
+    expect(off.outputsOff).toEqual(['stage'])
+    expect(reduce(off, { type: 'output.power', outputId: 'stage', isOn: true }, decks).outputsOff).toEqual([])
   })
 
   it('steps live back without crossing into the previous item', () => {
@@ -66,13 +91,13 @@ describe('reduce', () => {
     let state = reduce(start, { type: 'live.take' }, decks)
     state = reduce(state, { type: 'lowerThird.set', lowerThirdId: 'pastor' }, decks)
     state = reduce(state, { type: 'layer.clear', layer: 'slide' }, decks)
-    expect(state.live).toEqual({ slide: null, audio: null, background: 'night-blue', lowerThird: 'pastor' })
+    expect(state.live).toEqual({ slide: null, audio: null, background: 'night-blue', lowerThird: 'pastor', media: null, overlays: [] })
   })
 
   it('clears every layer at once', () => {
     let state = reduce(start, { type: 'audio.set', audioCueId: 'walk-in' }, decks)
     state = reduce(state, { type: 'layer.clearAll' }, decks)
-    expect(Object.values(state.live).every((v) => v === null)).toBe(true)
+    expect(state.live).toEqual({ slide: null, audio: null, background: null, lowerThird: null, media: null, overlays: [] })
   })
 })
 
@@ -315,11 +340,88 @@ describe('Engine themes', () => {
     const projector = fakePort()
     engine.connect(projector.port, { role: 'output', outputId: 'projector' })
     engine.dispatch({ type: 'live.take' })
-    expect(projector.renders().at(-1)!.slide!.fill).toBeNull()
+    expect(projector.renders().at(-1)!.background).toEqual(starterLibrary.backgrounds.candle!.render)
     engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setTheme', themeId: 'paper' } })
-    expect(projector.renders().at(-1)!.slide).toMatchObject({ fill: { kind: 'color', color: '#F4EFE6' }, boxes: [{ color: '#1A1A1A' }] })
+    expect(projector.renders().at(-1)).toMatchObject({ background: { kind: 'color', color: '#F4EFE6' }, slide: { fill: null, boxes: [{ color: '#1A1A1A' }] } })
     engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setTheme', themeId: 'gone' } })
-    expect(projector.renders().at(-1)!.slide!.fill).toBeNull()
+    expect(projector.renders().at(-1)!.background).toEqual(starterLibrary.backgrounds.candle!.render)
+  })
+
+  it('draws an item background in place of the theme fill, in preview and live', () => {
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary })
+    const projector = fakePort()
+    engine.connect(projector.port, { role: 'output', outputId: 'projector' })
+    engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setTheme', themeId: 'paper' } })
+    const set = (backgroundId: string | null) =>
+      engine.dispatch({ type: 'service.edit', serviceId: 'sunday', edit: { type: 'service.updateItem', itemId: 'item-amazing-grace', changes: { backgroundId } } })
+    set('night-blue')
+    expect(engine.snapshot().previewRender.background).toEqual({ kind: 'color', color: '#102033' })
+    engine.dispatch({ type: 'live.take' })
+    expect(projector.renders().at(-1)!.background).toEqual({ kind: 'color', color: '#102033' })
+    set('gone')
+    expect(projector.renders().at(-1)!.background).toEqual({ kind: 'color', color: '#F4EFE6' })
+    set(null)
+    expect(projector.renders().at(-1)!.background).toEqual({ kind: 'color', color: '#F4EFE6' })
+  })
+
+  it('keeps the words on screen when the background changes, and a live pick lasts only for its item', () => {
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary })
+    const projector = fakePort()
+    engine.connect(projector.port, { role: 'output', outputId: 'projector' })
+    engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setTheme', themeId: 'paper' } })
+    engine.dispatch({ type: 'live.take' })
+    engine.dispatch({ type: 'background.set', backgroundId: 'forest-light' })
+    expect(projector.renders().at(-1)).toMatchObject({ background: starterLibrary.backgrounds['forest-light']!.render, slide: { key: 'item-amazing-grace#0' } })
+    engine.dispatch({ type: 'live.next' })
+    expect(projector.renders().at(-1)!.background).toEqual(starterLibrary.backgrounds['forest-light']!.render)
+    engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setTheme', themeId: null } })
+    engine.dispatch({ type: 'live.show', ref: { itemId: 'item-john-3', index: 0 } })
+    expect(projector.renders().at(-1)!.background).toEqual(starterLibrary.backgrounds['forest-light']!.render)
+    engine.dispatch({ type: 'service.edit', serviceId: 'sunday', edit: { type: 'service.updateItem', itemId: 'item-it-is-well', changes: { backgroundId: 'plum-still' } } })
+    engine.dispatch({ type: 'live.show', ref: { itemId: 'item-it-is-well', index: 0 } })
+    expect(projector.renders().at(-1)!.background).toEqual(starterLibrary.backgrounds['plum-still']!.render)
+  })
+
+  it('blanks the audience screens on black and leaves the stage screen alone', () => {
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary })
+    const projector = fakePort()
+    const stage = fakePort()
+    engine.connect(projector.port, { role: 'output', outputId: 'projector' })
+    engine.connect(stage.port, { role: 'output', outputId: 'stage' })
+    engine.dispatch({ type: 'lowerThird.set', lowerThirdId: 'pastor' })
+    engine.dispatch({ type: 'live.take' })
+    engine.dispatch({ type: 'screens.black', isBlack: true })
+    expect(projector.renders().at(-1)).toMatchObject({ background: null, slide: null, lowerThird: null })
+    expect(stage.renders().at(-1)!.stage!.current.length).toBeGreaterThan(0)
+    engine.dispatch({ type: 'screens.black', isBlack: false })
+    expect(projector.renders().at(-1)).toMatchObject({ slide: { key: 'item-amazing-grace#0' }, lowerThird: { key: 'pastor' } })
+  })
+
+  it('sends nothing to a switched-off output while the operator still sees what it would show', () => {
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary })
+    const stage = fakePort()
+    engine.connect(stage.port, { role: 'output', outputId: 'stage' })
+    engine.dispatch({ type: 'live.take' })
+    engine.dispatch({ type: 'output.power', outputId: 'stage', isOn: false })
+    expect(stage.renders().at(-1)!.stage).toBeNull()
+    const snapshot = engine.snapshot()
+    expect(snapshot.outputs.find((o) => o.id === 'stage')!.isOn).toBe(false)
+    expect(snapshot.stageRender.stage!.current.length).toBeGreaterThan(0)
+    engine.dispatch({ type: 'rehearsal.start' })
+    engine.dispatch({ type: 'rehearsal.stop' })
+    expect(engine.current.outputsOff).toEqual(['stage'])
+  })
+
+  it('saves, edits and deletes lower thirds, taking a deleted one off the screen', () => {
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary })
+    engine.dispatch({ type: 'lowerThird.save', lowerThird: { id: 'guest', title: '  Rev. Achieng  ', subtitle: 'Guest speaker' } })
+    expect(engine.documents.lowerThirds.guest).toEqual({ id: 'guest', title: 'Rev. Achieng', subtitle: 'Guest speaker' })
+    engine.dispatch({ type: 'lowerThird.save', lowerThird: { id: 'guest', title: '', subtitle: 'x' } })
+    expect(engine.documents.lowerThirds.guest!.title).toBe('Rev. Achieng')
+    engine.dispatch({ type: 'lowerThird.set', lowerThirdId: 'guest' })
+    engine.dispatch({ type: 'lowerThird.delete', lowerThirdId: 'guest' })
+    expect(engine.documents.lowerThirds.guest).toBeUndefined()
+    expect(engine.current.live.lowerThird).toBeNull()
   })
 
   it('updates the live slide when its theme is edited, and only deletes unused themes', () => {
@@ -475,3 +577,398 @@ describe('Engine stage screen', () => {
   })
 })
 
+describe('Engine volunteer mode and rehearsal', () => {
+  const setup = () => {
+    const clock = { now: 1_000_000 }
+    const saved: { pinHash?: string; isLocked: boolean }[] = []
+    const states: EngineState[] = []
+    const live: string[] = []
+    const engine = new Engine({
+      bibles: testBibles,
+      library: starterLibrary,
+      now: () => clock.now,
+      onSettingsChange: (s) => saved.push(s),
+      onStateChange: (s) => states.push(s),
+      onItemLive: (item) => live.push(item.id),
+    })
+    const unlock = (pin: string) => (engine as unknown as { query(q: object): { isUnlocked: boolean; waitSeconds: number } }).query({ type: 'volunteer.unlock', pin })
+    return { engine, clock, saved, states, live, unlock }
+  }
+
+  it('needs a PIN to lock the first time, and stores only its hash', () => {
+    const { engine, saved } = setup()
+    engine.dispatch({ type: 'volunteer.lock' })
+    engine.dispatch({ type: 'volunteer.lock', pin: '12' })
+    expect(engine.snapshot().mode.isLocked).toBe(false)
+    engine.dispatch({ type: 'volunteer.lock', pin: '2580' })
+    expect(engine.snapshot().mode).toEqual({ isLocked: true, hasPin: true, isRehearsing: false })
+    expect(saved.at(-1)).toMatchObject({ isLocked: true, pinHash: expect.stringMatching(/^[0-9a-f]{64}$/) })
+    expect(JSON.stringify(saved)).not.toContain('2580')
+  })
+
+  it('refuses anything but presenting while locked', () => {
+    const { engine, unlock } = setup()
+    engine.dispatch({ type: 'volunteer.lock', pin: '2580' })
+    engine.dispatch({ type: 'live.take' })
+    engine.dispatch({ type: 'live.next' })
+    expect(engine.current.live.slide).toEqual({ itemId: 'item-amazing-grace', index: 1 })
+    engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setTitle', title: 'Changed' } })
+    engine.dispatch({ type: 'service.edit', serviceId: 'sunday', edit: { type: 'service.removeItem', itemId: 'item-john-3' } })
+    engine.dispatch({ type: 'song.delete', songId: 'it-is-well' })
+    engine.dispatch({ type: 'volunteer.setPin', pin: '0000' })
+    expect(engine.documents.songs['amazing-grace']!.title).toBe('Amazing Grace')
+    expect(engine.service.items).toHaveLength(3)
+    expect(unlock('0000').isUnlocked).toBe(false)
+    expect(unlock('2580').isUnlocked).toBe(true)
+    engine.dispatch({ type: 'song.edit', songId: 'amazing-grace', edit: { type: 'song.setTitle', title: 'Changed' } })
+    expect(engine.documents.songs['amazing-grace']!.title).toBe('Changed')
+  })
+
+  it('blocks unlocking for 30 seconds after five wrong PINs', () => {
+    const { engine, clock, unlock } = setup()
+    engine.dispatch({ type: 'volunteer.lock', pin: '2580' })
+    for (let i = 0; i < 4; i++) expect(unlock('1111')).toEqual({ type: 'unlock', isUnlocked: false, waitSeconds: 0 })
+    expect(unlock('1111')).toMatchObject({ isUnlocked: false, waitSeconds: 30 })
+    expect(unlock('2580')).toMatchObject({ isUnlocked: false, waitSeconds: 30 })
+    clock.now += 31_000
+    expect(unlock('2580').isUnlocked).toBe(true)
+  })
+
+  it('keeps the screens and the saved state on air while rehearsing, then restores it', () => {
+    const { engine, states, live } = setup()
+    const projector = fakePort()
+    engine.connect(projector.port, { role: 'output', outputId: 'projector' })
+    engine.dispatch({ type: 'live.take' })
+    const onAir = engine.current
+    const frames = projector.renders().length
+    const saves = states.length
+
+    engine.dispatch({ type: 'rehearsal.start' })
+    engine.dispatch({ type: 'item.select', itemId: 'item-it-is-well' })
+    engine.dispatch({ type: 'live.take' })
+    engine.dispatch({ type: 'layer.clearAll' })
+    expect(projector.renders()).toHaveLength(frames)
+    expect(states).toHaveLength(saves)
+    expect(live).toEqual(['item-amazing-grace'])
+    expect(engine.snapshot().mode.isRehearsing).toBe(true)
+    expect(engine.snapshot().liveRender.background).toBeNull()
+
+    engine.dispatch({ type: 'rehearsal.stop' })
+    expect(engine.current).toEqual(onAir)
+    expect(engine.snapshot().liveRender.slide!.boxes[0]!.lines[0]).toBe('Amazing grace, how sweet the sound')
+  })
+
+  it('starts locked when the saved settings say so, and refuses imports while locked', () => {
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary, settings: { isLocked: true, pinHash: 'aa', pinSalt: 'bb' } })
+    const query = (q: object) => (engine as unknown as { query(q: object): { type: string } }).query(q)
+    expect(engine.snapshot().mode.isLocked).toBe(true)
+    expect(query({ type: 'import.preview', files: [] }).type).toBe('hits')
+  })
+})
+
+
+describe('Engine instant presenting', () => {
+  const setup = () => {
+    const states: EngineState[] = []
+    const live: string[] = []
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary, onStateChange: (s) => states.push(s), onItemLive: (item) => live.push(item.id) })
+    const projector = fakePort()
+    engine.connect(projector.port, { role: 'output', outputId: 'projector' })
+    const ask = (query: object) => (engine as unknown as { query(q: object): { type: string; chapter?: unknown; slides?: unknown[] } }).query(query)
+    return { engine, projector, states, live, ask }
+  }
+  const grace = { type: 'song', songId: 'amazing-grace' } as const
+
+  it('previews and takes a library song live without touching the service or its timing', () => {
+    const { engine, projector, live } = setup()
+    const items = engine.service.items
+    engine.dispatch({ type: 'instant.show', source: grace, index: 1, isLive: false })
+    const id = engine.current.preview!.itemId
+    expect(id).toMatch(/^instant-song-/)
+    expect(engine.current.selectedItemId).toBe('item-amazing-grace')
+    expect(engine.snapshot().instant.map((d) => d.title)).toEqual(['Amazing Grace'])
+    engine.dispatch({ type: 'instant.show', source: grace, index: 0, isLive: true })
+    expect(engine.current.live.slide).toEqual({ itemId: id, index: 0 })
+    expect(projector.renders().at(-1)!.slide!.boxes[0]!.lines[0]).toBe('Amazing grace, how sweet the sound')
+    expect(engine.service.items).toBe(items)
+    expect(live).toEqual([])
+    expect(engine.current.timing.itemId).toBeNull()
+  })
+
+  it('steps within a library deck and never runs on into the service', () => {
+    const { engine } = setup()
+    const count = engine.snapshot().decks[0]!.slides.length
+    engine.dispatch({ type: 'instant.show', source: grace, index: count - 1, isLive: true })
+    const at = engine.current.live.slide
+    engine.dispatch({ type: 'live.next' })
+    expect(engine.current.live.slide).toEqual(at)
+    engine.dispatch({ type: 'live.previous' })
+    expect(engine.current.live.slide).toEqual({ ...at!, index: count - 2 })
+  })
+
+  it('drops a library source once nothing shows it, and keeps it in the saved state while it does', () => {
+    const { engine, states } = setup()
+    engine.dispatch({ type: 'instant.show', source: grace, index: 0, isLive: true })
+    expect(Object.keys(states.at(-1)!.instant)).toHaveLength(1)
+    engine.dispatch({ type: 'item.select', itemId: 'item-john-3' })
+    engine.dispatch({ type: 'live.take' })
+    expect(engine.current.instant).toEqual({})
+    expect(engine.snapshot().instant).toEqual([])
+  })
+
+  it('lists a chapter with the slide each verse starts on, and presents it from there', () => {
+    const { engine, ask, projector } = setup()
+    const result = ask({ type: 'bible.chapter', book: 'JHN', chapter: 3, translations: ['KJV', 'WEB'] }) as { chapter: { source: object; verses: { verse: number; main: string; secondary: string; slideIndex: number }[] } }
+    const verse16 = result.chapter.verses.find((v) => v.verse === 16)!
+    expect(verse16.main).toContain('For God so loved the world')
+    expect(verse16.secondary).not.toBe('')
+    engine.dispatch({ type: 'instant.show', source: result.chapter.source as never, index: verse16.slideIndex, isLive: true })
+    expect(projector.renders().at(-1)!.slide!.boxes[0]!.lines[0]).toContain('For God so loved the world')
+    expect(ask({ type: 'bible.chapter', book: 'XYZ', chapter: 1, translations: ['KJV'] }).chapter).toBeNull()
+  })
+
+  it('refuses malformed sources and slide indexes', () => {
+    const { engine } = setup()
+    const before = engine.current
+    engine.dispatch({ type: 'instant.show', source: { type: 'song', songId: '../x' }, index: 0, isLive: true })
+    engine.dispatch({ type: 'instant.show', source: grace, index: 99, isLive: true })
+    engine.dispatch({ type: 'instant.show', source: { type: 'scripture', ref: { book: 'JHN', startChapter: 99, endChapter: 99, startVerse: 1, endVerse: 1 }, translations: ['KJV'], versesPerSlide: 1 }, index: 0, isLive: false })
+    expect(engine.current).toBe(before)
+  })
+
+  it('returns a library song’s slides for the Songs tab', () => {
+    const { ask } = setup()
+    expect((ask({ type: 'song.slides', songId: 'amazing-grace' }).slides as unknown[]).length).toBeGreaterThan(2)
+    expect(ask({ type: 'song.slides', songId: 'gone' }).slides).toEqual([])
+  })
+})
+
+describe('Engine Bible downloads', () => {
+  const version = { id: 7, title: 'Test Version', abbreviation: 'kjv', languageTag: 'eng', languageName: 'English', language: 'en' }
+  const details = { books: [{ usfm: 'JUD', human: 'Jude', chapters: [{ usfm: 'JUD.1', canonical: true }] }], copyright_short: { text: 'Test copyright' } }
+  const chapter = '<span class="verse v1" data-usfm="JUD.1.1"><span class="label">1</span><span class="content">Jude, a servant.</span></span>'
+  const setup = async (status = 200) => {
+    const encode = (text: string) => new TextEncoder().encode(text)
+    const fetcher = async (url: string) => {
+      if (status !== 200) return { status, body: encode('') }
+      if (url.includes('/api/bible/versions')) return { status, body: encode(JSON.stringify({ response: { data: { versions: [{ ...version, text: true, language: { language_tag: 'eng', iso_639_1: 'en' } }] } } })) }
+      if (url.includes('/api/bible/version/')) return { status, body: encode(JSON.stringify(details)) }
+      return { status, body: encode(chapter) }
+    }
+    const removed: string[] = []
+    const installed: string[] = []
+    const stagingDir = await mkdtemp(join(tmpdir(), 'openstage-dl-'))
+    const engine = new Engine({
+      bibles: testBibles,
+      library: starterLibrary,
+      bundledBibles: ['WEB'],
+      bibleCom: { client: new BibleComClient(fetcher), stagingDir, retryDelayMs: 1 },
+      onBibleImported: (b) => installed.push(b.code),
+      onBibleRemoved: (code) => removed.push(code),
+    })
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 50))
+    return { engine, removed, installed, settle }
+  }
+
+  it('lists the catalogue, downloads a version under a free code and installs it', async () => {
+    const { engine, installed, settle } = await setup()
+    const catalog = (await (engine as unknown as { query(q: object): Promise<{ versions: unknown[] }> }).query({ type: 'bible.catalog', languageTag: 'eng' })).versions
+    expect(catalog).toHaveLength(1)
+    engine.dispatch({ type: 'bible.download', version })
+    expect(engine.snapshot().downloads.map((d) => d.version.id)).toEqual([7])
+    await settle()
+    expect(engine.snapshot().downloads).toEqual([])
+    expect(installed).toEqual(['KJV-7'])
+    expect(engine.snapshot().downloadedVersionIds).toEqual([7])
+    expect(engine.snapshot().bibles.find((b) => b.code === 'KJV-7')).toMatchObject({ name: 'Test Version', notice: 'Test copyright' })
+  })
+
+  it('keeps a refused download with its reason, and refuses bad versions', async () => {
+    const { engine, settle } = await setup(429)
+    engine.dispatch({ type: 'bible.download', version: { ...version, id: -1 } })
+    expect(engine.snapshot().downloads).toEqual([])
+    engine.dispatch({ type: 'bible.download', version })
+    await settle()
+    expect(engine.snapshot().downloads[0]).toMatchObject({ isRefused: true, error: expect.stringContaining('not accepting') })
+    engine.dispatch({ type: 'bible.cancelDownload', versionId: 7 })
+    expect(engine.snapshot().downloads).toEqual([])
+  })
+
+  it('removes added Bibles but never bundled ones', async () => {
+    const { engine, removed } = await setup()
+    engine.dispatch({ type: 'bible.remove', code: 'WEB' })
+    engine.dispatch({ type: 'bible.remove', code: 'KJV' })
+    expect(removed).toEqual(['KJV'])
+    expect(engine.snapshot().bibles.map((b) => b.code)).toEqual(['WEB'])
+  })
+})
+
+describe('Engine song catalogues', () => {
+  const imported = {
+    title: 'Free Song',
+    authors: ['A. Writer'],
+    copyright: '',
+    languages: ['en'],
+    sections: [{ label: 'Verse 1', slides: [[{ text: 'A free song line', chords: [] }]] }],
+    order: [],
+  }
+  const songs = [
+    { id: 1, title: 'Free Song', authors: ['A. Writer'], firstLine: 'A free song line', isRestricted: false, language: 'en' },
+    { id: 2, title: 'Amazing Grace', authors: [], firstLine: 'Amazing grace, how sweet the sound', isRestricted: true, language: 'en' },
+  ]
+  const setup = (fail = false) => {
+    let packs = 0
+    const client = {
+      languages: async () => [{ code: 'en', name: 'English', count: 2 }],
+      pack: async () => {
+        packs++
+        if (fail) throw Object.assign(new Error('No connection to the Worship Leader song server.'), { name: 'SongSourceError' })
+        return { songs, imported: new Map([[1, imported], [2, { ...imported, title: 'Amazing Grace', sections: [{ label: 'Verse 1', slides: [[{ text: 'Amazing grace, how sweet the sound', chords: [] }]] }] }]]) }
+      },
+    }
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary, songSources: { worshipLeader: client } })
+    const ask = (q: object) => (engine as unknown as { query(q: object): Promise<Record<string, unknown>> }).query(q)
+    return { engine, ask, packs: () => packs }
+  }
+
+  it('lists languages and songs, fetching a language once, and previews chosen songs as an import', async () => {
+    const { ask, packs } = setup()
+    expect(await ask({ type: 'songs.languages', source: 'worshipLeader' })).toMatchObject({ languages: [{ code: 'en' }], error: null })
+    expect((await ask({ type: 'songs.catalog', source: 'worshipLeader', language: 'en' })).songs).toHaveLength(2)
+    const plan = (await ask({ type: 'songs.preview', source: 'worshipLeader', language: 'en', songIds: [1, 2, 99] })).plan as { importId: string; items: { title: string; status: string; reason: string }[] }
+    expect(packs()).toBe(1)
+    expect(plan.items.map((i) => [i.title, i.status])).toEqual([
+      ['Free Song', 'new'],
+      ['Amazing Grace', 'duplicate'],
+      ['Worship Leader song 99', 'unreadable'],
+    ])
+    const report = (await ask({ type: 'import.apply', importId: plan.importId, decisions: { i0: 'add' }, bibles: {} })).report as { added: string[] }
+    expect(report.added).toEqual(['Free Song'])
+  })
+
+  it('reports a failed fetch and tries again next time', async () => {
+    const { ask, packs } = setup(true)
+    expect(await ask({ type: 'songs.catalog', source: 'worshipLeader', language: 'en' })).toMatchObject({ songs: [], error: 'No connection to the Worship Leader song server.' })
+    await ask({ type: 'songs.catalog', source: 'worshipLeader', language: 'en' })
+    expect(packs()).toBe(2)
+    expect(await ask({ type: 'songs.catalog', source: 'nowhere', language: 'en' })).toMatchObject({ error: 'The song catalogue is not available.' })
+  })
+})
+
+describe('Engine slides, overlays and media', () => {
+  const connected = () => {
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary })
+    const projector = fakePort()
+    engine.connect(projector.port, { role: 'output', outputId: 'projector' })
+    return { engine, projector, last: () => projector.renders().at(-1)! }
+  }
+
+  it('creates a deck, cleans pages on the way in, and shows them from the service with QR codes resolved', () => {
+    const { engine, last } = connected()
+    engine.dispatch({ type: 'presentation.create', presentationId: 'notices', title: '  Notices ' })
+    const edit = (change: PresentationEdit) => engine.dispatch({ type: 'presentation.edit', presentationId: 'notices', edit: change })
+    const page = { ...newPage('p2', 'Give'), elements: [newElement('qr', 'code'), { ...newElement('text', 'words'), text: 'Scan me', style: { size: 99, color: 'red; background: url(x)' } }] }
+    edit({ type: 'presentation.addPage', page: page as never })
+    const deck = engine.documents.presentations.notices!
+    expect(deck.title).toBe('Notices')
+    expect(deck.pages.map((p) => p.id)).toEqual(['p1', 'p2'])
+    const text = deck.pages[1]!.elements[1]!
+    expect(text.kind === 'text' && text.style).toMatchObject({ size: 0.5, color: '#FFFFFF' })
+
+    engine.dispatch({ type: 'service.edit', serviceId: 'sunday', edit: { type: 'service.addPresentation', itemId: 'item-notices', presentationId: 'notices' } })
+    engine.dispatch({ type: 'live.show', ref: { itemId: 'item-notices', index: 1 } })
+    const qr = last().slide!.page!.elements[0]!
+    expect(qr.kind === 'qr' && qr.modules.length).toBeGreaterThan(20)
+    expect(last().slide!.boxes).toEqual([])
+
+    edit({ type: 'presentation.removePage', pageId: 'p1' })
+    edit({ type: 'presentation.removePage', pageId: 'p2' })
+    expect(engine.documents.presentations.notices!.pages).toHaveLength(1)
+    engine.dispatch({ type: 'presentation.delete', presentationId: 'notices' })
+    expect(engine.documents.presentations.notices).toBeDefined()
+  })
+
+  it('loops a looping deck and moves pages on by themselves', () => {
+    vi.useFakeTimers()
+    try {
+      const { engine } = connected()
+      engine.dispatch({ type: 'instant.show', source: { type: 'presentation', presentationId: 'welcome-loop' }, index: 2, isLive: true })
+      expect(engine.current.live.slide!.index).toBe(2)
+      vi.advanceTimersByTime(12_000)
+      expect(engine.current.live.slide!.index).toBe(0)
+      engine.dispatch({ type: 'screens.black', isBlack: true })
+      vi.advanceTimersByTime(12_000)
+      expect(engine.current.live.slide!.index).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows several overlays at once over everything, and clears them together', () => {
+    const { engine, last } = connected()
+    engine.dispatch({ type: 'overlay.show', overlayId: 'announcements' })
+    engine.dispatch({ type: 'overlay.show', overlayId: 'corner-clock' })
+    engine.dispatch({ type: 'overlay.show', overlayId: 'announcements' })
+    expect(last().overlays.map((o) => o.id)).toEqual(['corner-clock', 'announcements'])
+    expect(last().overlays[1]).toMatchObject({ kind: 'ticker', label: 'NEWS' })
+    engine.dispatch({ type: 'overlay.save', overlay: { ...engine.documents.overlays.announcements!, text: 'Changed' } as never })
+    expect(last().overlays[1]).toMatchObject({ text: 'Changed' })
+    engine.dispatch({ type: 'layer.clear', layer: 'overlays' })
+    expect(last().overlays).toEqual([])
+    engine.dispatch({ type: 'overlay.show', overlayId: 'nope' })
+    expect(engine.current.live.overlays).toEqual([])
+  })
+
+  it('copies imported media, plays, pauses and restarts it, and clears it', async () => {
+    let now = 1_000_000
+    const dir = await mkdtemp(join(tmpdir(), 'openstage-media-'))
+    const source = join(dir, 'clip.mp4')
+    await writeFile(source, 'not really a video')
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary, mediaDir: join(dir, 'library'), now: () => now })
+    const projector = fakePort()
+    engine.connect(projector.port, { role: 'output', outputId: 'projector' })
+    engine.dispatch({ type: 'media.import', mediaId: 'clip', name: 'Clip', path: source, mediaType: 'video', duration: 30 })
+    engine.dispatch({ type: 'media.import', mediaId: 'bad', name: 'Bad', path: join(dir, 'x.exe'), mediaType: 'video', duration: 1 })
+    await vi.waitFor(() => expect(engine.documents.media.clip).toBeDefined())
+    expect(await readFile(join(dir, 'library', 'clip.mp4'), 'utf8')).toBe('not really a video')
+    expect(engine.documents.media.bad).toBeUndefined()
+
+    engine.dispatch({ type: 'media.update', mediaId: 'clip', changes: { startAt: 5, volume: 7 } })
+    expect(engine.documents.media.clip).toMatchObject({ startAt: 5, volume: 1 })
+    engine.dispatch({ type: 'media.show', mediaId: 'clip' })
+    const media = () => projector.renders().at(-1)!.media!
+    expect(media()).toMatchObject({ type: 'video', src: 'openstage-media://file/clip.mp4', position: 5, isPaused: false })
+    now += 4000
+    engine.dispatch({ type: 'media.control', action: 'pause' })
+    expect(media()).toMatchObject({ position: 9, isPaused: true })
+    now += 10_000
+    engine.dispatch({ type: 'media.control', action: 'play' })
+    expect(media()).toMatchObject({ position: 9, isPaused: false, at: now })
+    const key = media().key
+    engine.dispatch({ type: 'media.control', action: 'restart' })
+    expect(media().key).not.toBe(key)
+    engine.dispatch({ type: 'layer.clear', layer: 'media' })
+    expect(projector.renders().at(-1)!.media).toBeNull()
+    expect(engine.current.playback).toBeNull()
+  })
+
+  it('takes a designed page off when media starts, so the video is not hidden under it', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'openstage-media-'))
+    await writeFile(join(dir, 'a.mp4'), 'x')
+    const engine = new Engine({ bibles: testBibles, library: starterLibrary, mediaDir: join(dir, 'library') })
+    engine.dispatch({ type: 'media.import', mediaId: 'clip', name: 'Clip', path: join(dir, 'a.mp4'), mediaType: 'video', duration: 5 })
+    await vi.waitFor(() => expect(engine.documents.media.clip).toBeDefined())
+    engine.dispatch({ type: 'live.take' })
+    engine.dispatch({ type: 'media.show', mediaId: 'clip' })
+    expect(engine.current.live.slide).not.toBeNull()
+    engine.dispatch({ type: 'instant.show', source: { type: 'presentation', presentationId: 'welcome-loop' }, index: 0, isLive: true })
+    engine.dispatch({ type: 'media.show', mediaId: 'clip' })
+    expect(engine.current.live.slide).toBeNull()
+  })
+
+  it('finds decks by the words on their pages', () => {
+    const index = new LibraryIndex()
+    index.rebuild(starterLibrary)
+    expect(index.search('mandazi').map((h) => h.id)).toEqual(['welcome-loop'])
+  })
+})

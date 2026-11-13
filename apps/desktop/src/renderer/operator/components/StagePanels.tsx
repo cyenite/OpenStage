@@ -1,47 +1,10 @@
-import { useEffect, useState } from 'react'
-import { formatCountdown, itemKinds, stageLayouts, timerRemaining, type OperatorSnapshot } from '@openstage/shared'
+import { useState } from 'react'
+import { formatCountdown, stageLayouts, timerRemaining, type OperatorSnapshot } from '@openstage/shared'
 import { dispatch } from '../engine'
 
 const quickMessages = ['Wrap up', 'Chorus again', '5 minutes'] as const
 
-/** The right-hand column of Present in the design: what is next, the clocks, and the stage screen. */
-export function PresentInspector({ snapshot }: { snapshot: OperatorSnapshot }) {
-  const [now, setNow] = useState(Date.now())
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 500)
-    return () => clearInterval(timer)
-  }, [])
-  return (
-    <aside className="inspector present-inspector" aria-label="Inspector">
-      <UpNext snapshot={snapshot} />
-      <Timers snapshot={snapshot} now={now} />
-      <StageMessage snapshot={snapshot} now={now} />
-      <StageScreen snapshot={snapshot} />
-    </aside>
-  )
-}
-
-function UpNext({ snapshot }: { snapshot: OperatorSnapshot }) {
-  const { service, decks, state } = snapshot
-  const liveIndex = service.items.findIndex((i) => i.id === state.live.slide?.itemId)
-  const next = decks[liveIndex + 1]
-  if (!next) return null
-  const badge = itemKinds.find((k) => k.key === next.kind)?.badge
-  return (
-    <div className="inspector-block">
-      <span className="panel-title">Up next in the service</span>
-      <button className="up-next" onClick={() => dispatch({ type: 'item.select', itemId: next.itemId })}>
-        <span className="order-kind">{badge}</span>
-        <span className="up-next-text">
-          <strong>{next.title}</strong>
-          <span className="muted">{next.isPlaceholder ? `${next.minutes} min` : `${next.slides.length} slides · ${next.minutes} min`}</span>
-        </span>
-      </button>
-    </div>
-  )
-}
-
-function Timers({ snapshot, now }: { snapshot: OperatorSnapshot; now: number }) {
+export function Timers({ snapshot, now }: { snapshot: OperatorSnapshot; now: number }) {
   const { stage, timing } = snapshot.state
   const remaining = timerRemaining(stage.timer, now)
   const isRunning = stage.timer.endsAt !== null
@@ -86,7 +49,7 @@ function Timers({ snapshot, now }: { snapshot: OperatorSnapshot; now: number }) 
   )
 }
 
-function StageMessage({ snapshot, now }: { snapshot: OperatorSnapshot; now: number }) {
+export function StageMessage({ snapshot, now }: { snapshot: OperatorSnapshot; now: number }) {
   const [text, setText] = useState('')
   const current = snapshot.state.stage.message
   const send = (message: string) => {
@@ -126,11 +89,11 @@ function StageMessage({ snapshot, now }: { snapshot: OperatorSnapshot; now: numb
   )
 }
 
-function StageScreen({ snapshot }: { snapshot: OperatorSnapshot }) {
+export function StageLayout({ snapshot }: { snapshot: OperatorSnapshot }) {
   const layout = snapshot.state.stage.layout
   return (
     <div className="inspector-block">
-      <span className="panel-title">Stage screen</span>
+      <span className="panel-title">Stage screen layout</span>
       <div className="segmented" role="radiogroup" aria-label="Stage layout">
         {stageLayouts.map((l) => (
           <button key={l.key} role="radio" aria-checked={layout === l.key} aria-pressed={layout === l.key} title={l.detail} onClick={() => dispatch({ type: 'stage.layout', layout: l.key })}>
@@ -139,15 +102,6 @@ function StageScreen({ snapshot }: { snapshot: OperatorSnapshot }) {
         ))}
       </div>
       <span className="inspector-note">{stageLayouts.find((l) => l.key === layout)!.detail}.</span>
-      <span className="panel-title screens-title">Screens</span>
-      <ul className="screens-list">
-        {snapshot.outputs.map((o) => (
-          <li key={o.id}>
-            <span>{o.name}</span>
-            <span className={o.isConnected ? 'is-on' : 'muted'}>{!o.isConnected ? 'Offline' : o.id === 'stage' ? stageLayouts.find((l) => l.key === layout)!.label : 'Lyrics and background'}</span>
-          </li>
-        ))}
-      </ul>
     </div>
   )
 }

@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, type ElectronApplication } from '@playwright/test'
-import { launch, mainText, orderItem, tempUserData } from './app'
+import { deckSlide, launch, mainText, tempUserData } from './app'
 
 test('the operator window drives both outputs through the engine', async () => {
   const userData = tempUserData()
@@ -11,12 +11,14 @@ test('the operator window drives both outputs through the engine', async () => {
     const session = await launch(userData)
     app = session.app
     const { operator, projector, stage } = session
-    expect(readdirSync(join(userData, 'library', 'songs')).sort()).toEqual(['amazing-grace.json', 'it-is-well.json'])
+    const own = readdirSync(join(userData, 'library', 'songs')).filter((name) => !name.startsWith('open-hymnal-'))
+    expect(own.sort()).toEqual(['amazing-grace.json', 'it-is-well.json'])
+    expect(readdirSync(join(userData, 'library', 'songs')).length).toBeGreaterThan(200)
 
     await expect(projector.locator('.os-background')).toHaveCount(1)
     await expect(projector.locator('.os-slide')).toHaveCount(0)
 
-    await operator.getByRole('button', { name: /Send to live/ }).click()
+    await operator.keyboard.press('Space')
     await expect(mainText(projector)).toHaveText(/Amazing grace, how sweet the sound/)
     await expect(stage.locator('.os-stage-current')).toHaveText(/Amazing grace/)
     await expect(stage.locator('.os-stage-next-lines')).toHaveText(/I once was lost/)
@@ -26,14 +28,17 @@ test('the operator window drives both outputs through the engine', async () => {
     await expect(mainText(projector)).toHaveText(/I once was lost/)
     await expect(operator.getByTestId('monitor-live')).toContainText('slide 2')
 
-    await orderItem(operator, /^BK John 3:16-17/).click()
-    await operator.getByTestId('slide-0').dblclick()
+    await deckSlide(operator, /John 3:16-17/, 0).click()
     await expect(mainText(projector)).toHaveText(/only begotten Son/)
     await expect(projector.locator('.os-slide:last-child .os-box-secondary')).toHaveText(/one and only Son/)
 
     await operator.getByRole('tab', { name: 'Lower thirds' }).click()
-    await operator.getByRole('button', { name: /\[Pastor name\]/ }).click()
-    await expect(projector.locator('.os-lower-third-title')).toHaveText('[Pastor name]')
+    await expect(operator.getByRole('button', { name: 'Show [Pastor name] on the screen' })).toBeDisabled()
+    await operator.getByRole('button', { name: 'Edit [Pastor name]' }).click()
+    await operator.getByRole('textbox', { name: 'Name or heading' }).fill('Pastor Otieno')
+    await operator.getByRole('button', { name: 'Save and show' }).click()
+    await expect(projector.locator('.os-lower-third-title')).toHaveText('Pastor Otieno')
+    await expect(operator.getByRole('list', { name: 'Lower thirds' })).toContainText('ON AIR')
 
     await operator.keyboard.press('F2')
     await expect(projector.locator('.os-slide')).toHaveCount(0)
@@ -45,9 +50,20 @@ test('the operator window drives both outputs through the engine', async () => {
     await operator.getByRole('button', { name: 'Clear Lower third layer (F3)' }).click()
     await expect(projector.locator('.os-lower-third')).toHaveCount(0)
 
+    await operator.getByRole('button', { name: 'Show Pastor Otieno on the screen' }).click()
     await operator.keyboard.press('Escape')
     await expect(projector.locator('.os-background')).toHaveCount(0)
+    await expect(projector.locator('.os-lower-third')).toHaveCount(0)
     await expect(operator.locator('.pill-in-sync')).toHaveCount(2)
+    await operator.keyboard.press('Escape')
+    await expect(projector.locator('.os-lower-third-title')).toHaveText('Pastor Otieno')
+    await operator.keyboard.press('Escape')
+
+    await operator.getByRole('switch', { name: 'Stage screen' }).click()
+    await expect(stage.locator('.os-stage-screen')).toBeHidden()
+    await expect(operator.getByTestId('monitor-stage')).toContainText('Off')
+    await operator.getByRole('switch', { name: 'Stage screen' }).click()
+    await expect(stage.locator('.os-stage-screen')).toBeVisible()
 
     await operator.keyboard.press('Space')
     await expect(mainText(projector)).toHaveText(/God sent not his Son/)

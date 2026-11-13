@@ -31,6 +31,10 @@ import {
   type SongEdit,
   type Theme,
   type ThemeEdit,
+  cleanPage,
+  newPage,
+  type Presentation,
+  type PresentationEdit,
 } from '@openstage/shared'
 
 const isText = (value: unknown): value is string => typeof value === 'string'
@@ -139,7 +143,9 @@ export function applyServiceEdit(service: Service, edit: ServiceEdit): Service {
     case 'service.addSong': {
       const isTaken = service.items.some((i) => i.id === edit.itemId)
       if (!isSafeId(edit.itemId) || isTaken || !isSafeId(edit.songId) || !isSafeId(edit.arrangementId)) return service
-      return { ...service, items: [...service.items, { id: edit.itemId, type: 'song', songId: edit.songId, arrangementId: edit.arrangementId }] }
+      const after = service.items.findIndex((i) => i.id === edit.afterItemId)
+      const at = after >= 0 ? after + 1 : service.items.length
+      return { ...service, items: service.items.toSpliced(at, 0, { id: edit.itemId, type: 'song', songId: edit.songId, arrangementId: edit.arrangementId }) }
     }
     case 'service.addPassage': {
       const isTaken = service.items.some((i) => i.id === edit.itemId)
@@ -147,6 +153,13 @@ export function applyServiceEdit(service: Service, edit: ServiceEdit): Service {
       const after = service.items.findIndex((i) => i.id === edit.afterItemId)
       const at = after >= 0 ? after + 1 : service.items.length
       return { ...service, items: service.items.toSpliced(at, 0, { id: edit.itemId, type: 'scripture', passageId: edit.passageId }) }
+    }
+    case 'service.addPresentation': {
+      const isTaken = service.items.some((i) => i.id === edit.itemId)
+      if (!isSafeId(edit.itemId) || isTaken || !isSafeId(edit.presentationId)) return service
+      const after = service.items.findIndex((i) => i.id === edit.afterItemId)
+      const at = after >= 0 ? after + 1 : service.items.length
+      return { ...service, items: service.items.toSpliced(at, 0, { id: edit.itemId, type: 'presentation', presentationId: edit.presentationId }) }
     }
     case 'service.setTranslations':
       return isCodes(edit.translations) && !same(edit.translations, service.translations) ? { ...service, translations: edit.translations } : service
@@ -192,8 +205,16 @@ export function applyServiceEdit(service: Service, edit: ServiceEdit): Service {
       const index = service.items.findIndex((i) => i.id === edit.itemId)
       const slot = service.items[index]
       if (!slot || slot.type !== 'slot') return service
-      const { id, minutes, notes, slotId, themeId } = slot
-      const base = { id, ...(minutes !== undefined && { minutes }), ...(notes && { notes }), ...(slotId && { slotId }), ...(themeId && { themeId }), isLinked: false }
+      const { id, minutes, notes, slotId, themeId, backgroundId } = slot
+      const base = {
+        id,
+        ...(minutes !== undefined && { minutes }),
+        ...(notes && { notes }),
+        ...(slotId && { slotId }),
+        ...(themeId && { themeId }),
+        ...(backgroundId && { backgroundId }),
+        isLinked: false,
+      }
       if (slot.kind === 'song' && isSafeId(edit.songId) && isSafeId(edit.arrangementId)) {
         return { ...service, items: service.items.with(index, { ...base, type: 'song', songId: edit.songId, arrangementId: edit.arrangementId }) }
       }
@@ -201,6 +222,17 @@ export function applyServiceEdit(service: Service, edit: ServiceEdit): Service {
         return { ...service, items: service.items.with(index, { ...base, type: 'scripture', passageId: edit.passageId }) }
       }
       return service
+    }
+    case 'service.setBackground': {
+      const ids = Array.isArray(edit.itemIds) ? new Set(edit.itemIds) : new Set()
+      const backgroundId = edit.backgroundId
+      if (backgroundId !== null && !isSafeId(backgroundId)) return service
+      const items = service.items.map((item) => {
+        if (!ids.has(item.id) || (item.backgroundId ?? null) === backgroundId) return item
+        const { backgroundId: _old, ...rest } = item
+        return { ...rest, ...(backgroundId && { backgroundId }), isLinked: false } as ServiceItem
+      })
+      return items.some((item, index) => item !== service.items[index]) ? { ...service, items } : service
     }
     case 'service.setTheme':
       return isSafeId(edit.themeId) && edit.themeId !== service.themeId ? { ...service, themeId: edit.themeId } : service
@@ -238,6 +270,11 @@ function withItemChanges(item: ServiceItem, changes: ItemChanges): ServiceItem |
   else if (changes.themeId !== undefined) {
     if (!isSafeId(changes.themeId)) return null
     next.themeId = changes.themeId
+  }
+  if (changes.backgroundId === null) drop('backgroundId')
+  else if (changes.backgroundId !== undefined) {
+    if (!isSafeId(changes.backgroundId)) return null
+    next.backgroundId = changes.backgroundId
   }
   if (changes.title !== undefined) {
     const title = isText(changes.title) ? changes.title.trim() : ''
@@ -465,4 +502,51 @@ function transpose(song: Song, semitones: unknown): Song {
   })
   const sections = Object.fromEntries(Object.entries(song.sections).map(([id, s]) => [id, { ...s, slides: s.slides.map(shift) }]))
   return { ...song, meta: key ? { ...song.meta, key } : song.meta, sections }
+}
+
+/** A copy of another deck with fresh page ids, or one empty page to start from. */
+export function createPresentation(id: Id, title: string, from: Presentation | undefined): Presentation {
+  const name = (isText(title) && title.trim().slice(0, 200)) || 'Untitled slides'
+  const pages = from ? from.pages.map((page, index) => ({ ...page, id: `p${index + 1}` })) : [newPage('p1', 'Page 1')]
+  return { id, title: name, isLooping: from?.isLooping ?? false, pages }
+}
+
+/** Pages are cleaned field by field on the way in, so the editor can send whole pages without the engine trusting them. */
+export function applyPresentationEdit(presentation: Presentation, edit: PresentationEdit): Presentation {
+  const at = (pageId: unknown) => presentation.pages.findIndex((p) => p.id === pageId)
+  switch (edit.type) {
+    case 'presentation.setTitle': {
+      const title = isText(edit.title) ? edit.title.trim().slice(0, 200) : ''
+      return title && title !== presentation.title ? { ...presentation, title } : presentation
+    }
+    case 'presentation.setLooping':
+      return typeof edit.isLooping === 'boolean' && edit.isLooping !== presentation.isLooping ? { ...presentation, isLooping: edit.isLooping } : presentation
+    case 'presentation.addPage': {
+      const page = cleanPage(edit.page)
+      if (!page || at(page.id) >= 0 || presentation.pages.length >= 500) return presentation
+      const after = at(edit.afterPageId)
+      return { ...presentation, pages: presentation.pages.toSpliced(after >= 0 ? after + 1 : presentation.pages.length, 0, page) }
+    }
+    case 'presentation.setPage': {
+      const page = cleanPage(edit.page)
+      const index = page ? at(page.id) : -1
+      if (!page || index < 0 || same(page, presentation.pages[index])) return presentation
+      return { ...presentation, pages: presentation.pages.with(index, page) }
+    }
+    case 'presentation.removePage': {
+      const index = at(edit.pageId)
+      return index >= 0 && presentation.pages.length > 1 ? { ...presentation, pages: presentation.pages.toSpliced(index, 1) } : presentation
+    }
+    case 'presentation.movePage': {
+      const from = at(edit.pageId)
+      const to = Math.trunc(edit.toIndex)
+      if (from < 0 || !Number.isInteger(to) || to < 0 || to >= presentation.pages.length || to === from) return presentation
+      const pages = [...presentation.pages]
+      const [moved] = pages.splice(from, 1)
+      pages.splice(to, 0, moved!)
+      return { ...presentation, pages }
+    }
+    default:
+      return presentation
+  }
 }

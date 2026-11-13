@@ -3,15 +3,28 @@ import {
   stageLayouts,
   isSafeId,
   itemMinutes,
+  bookById,
+  instantId,
   lookup,
   parseReference,
+  passageSlides,
+  versesFor,
+  type ChapterView,
   serviceFromTemplate,
   serviceReadiness,
   type ServiceSummary,
   type ServiceTemplate,
   type TemplateEdit,
   type BibleInfo,
+  type BibleDownload,
   type BibleText,
+  type RemoteVersion,
+  songSources,
+  type CatalogSong,
+  type LibraryQuery,
+  type SongLanguage,
+  type SongSourceKey,
+  volunteerCommands,
   type ImportDecision,
   type ImportFile,
   type ImportReport,
@@ -30,6 +43,7 @@ import {
   type EngineState,
   type Id,
   type Library,
+  type LowerThird,
   type OperatorSnapshot,
   type RenderState,
   type SearchHit,
@@ -38,14 +52,36 @@ import {
   type ServiceItem,
   type SongEdit,
   type ThemeEdit,
+  cleanMediaSettings,
+  cleanOverlay,
+  type MediaItem,
+  type PresentationEdit,
 } from '@openstage/shared'
+import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
+import { copyFile, mkdir, unlink } from 'node:fs/promises'
+import { extname, isAbsolute, join } from 'node:path'
+import { BibleComError, downloadVersion, DownloadCancelled, type BibleComClient } from './bibles/biblecom'
 import { bibleInfo } from './bibles/store'
 import { readFiles } from './import/detect'
 import { findDuplicate, isBibleCode, mergeInto, planItems, songFromImport } from './import/plan'
-import type { Parsed } from './import/types'
-import { buildDecks, scriptureSlides } from './decks'
-import { applyPassageEdit, applyServiceEdit, applySongEdit, applyTemplateEdit, applyThemeEdit, createPassage, createSong, createTemplate, createTheme, isPassageRef } from './edits'
-import { outputs, resolveRender, type OutputId } from './resolve'
+import type { ImportedSong, Parsed } from './import/types'
+import { buildDecks, buildInstantDecks, findSlide, scriptureSlides } from './decks'
+import { cleanInstant, cleanSource, pruneInstant } from './instant'
+import {
+  applyPassageEdit,
+  applyPresentationEdit,
+  applyServiceEdit,
+  applySongEdit,
+  applyTemplateEdit,
+  applyThemeEdit,
+  createPassage,
+  createPresentation,
+  createSong,
+  createTemplate,
+  createTheme,
+  isPassageRef,
+} from './edits'
+import { blankRender, outputs, resolveRender, type OutputId } from './resolve'
 import { initialState, noTiming, reduce, sanitize } from './state'
 import { DocumentHistory } from './store/history'
 import type { LibrarySearch } from './store/library-index'
@@ -68,6 +104,7 @@ interface Edits {
   passages: PassageEdit
   services: ServiceEdit
   templates: TemplateEdit
+  presentations: PresentationEdit
 }
 
 type History = DocumentHistory<DocumentTypes[EditableKind], Edits[EditableKind]>
@@ -78,6 +115,13 @@ const appliers: { [K in EditableKind]: (document: DocumentTypes[K], edit: Edits[
   passages: applyPassageEdit,
   services: applyServiceEdit,
   templates: applyTemplateEdit,
+  presentations: applyPresentationEdit,
+}
+
+/** File types the media library takes, by extension; anything else is refused before it is copied. */
+const mediaExtensions: Record<MediaItem['type'], string[]> = {
+  image: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.bmp'],
+  video: ['.mp4', '.webm', '.m4v', '.mov', '.ogv', '.mkv'],
 }
 
 const isEditable = (kind: unknown): kind is EditableKind => typeof kind === 'string' && Object.hasOwn(appliers, kind)
@@ -88,8 +132,17 @@ interface OutputChannel {
   ackedSeq: number
 }
 
+/** Kept in `settings.json`, so a locked window stays locked across a restart. */
+export interface EngineSettings {
+  pinHash?: string
+  pinSalt?: string
+  isLocked: boolean
+}
+
 export interface EngineOptions {
   now?: () => number
+  settings?: EngineSettings
+  onSettingsChange?: (settings: EngineSettings) => void
   index?: LibrarySearch
   bibles?: BibleText[]
   library: Library
@@ -100,9 +153,37 @@ export interface EngineOptions {
   onDocumentChange?: <K extends DocumentKind>(kind: K, document: DocumentTypes[K]) => void
   onDocumentRemove?: (kind: DocumentKind, id: Id) => void
   onBibleImported?: (bible: BibleText) => void
+  onBibleRemoved?: (code: string) => void
+  /** Codes of the Bibles that ship with the app; they cannot be removed. */
+  bundledBibles?: string[]
+  /** Where bible.com downloads come from and where their chapters wait until the version is complete. */
+  bibleCom?: { client: BibleComClient; stagingDir: string; retryDelayMs?: number }
+  songSources?: Partial<Record<SongSourceKey, SongCatalogClient>>
+  /** Where imported images and videos are copied; without it media cannot be imported. */
+  mediaDir?: string
+}
+
+/** What the engine needs from an online song catalogue. */
+export interface SongCatalogClient {
+  languages(): Promise<SongLanguage[]>
+  pack(language: string): Promise<{ songs: CatalogSong[]; imported: Map<number, ImportedSong> }>
 }
 
 const noService: Service = { id: '', name: 'No service', items: [] }
+
+/** A catalogue entry comes back from the operator window, so it is checked before any URL is built from it. */
+function cleanRemoteVersion(raw: unknown): RemoteVersion | null {
+  const v = raw as Partial<RemoteVersion> | null
+  const isText = (s: unknown, max: number): s is string => typeof s === 'string' && s.trim().length > 0 && s.length <= max
+  if (!v || !Number.isInteger(v.id) || v.id! < 1 || !isText(v.title, 200) || !isText(v.abbreviation, 32) || !isText(v.language, 16) || !/^[a-z]{2,3}(-[a-z0-9]{2,8})?$/.test(v.language)) return null
+  return { id: v.id!, title: v.title.trim(), abbreviation: v.abbreviation.trim(), language: v.language, languageTag: String(v.languageTag ?? ''), languageName: String(v.languageName ?? '') }
+}
+
+const isPin = (pin: unknown): pin is string => typeof pin === 'string' && /^\d{4,8}$/.test(pin)
+
+function hashPin(pin: string, salt = randomBytes(16).toString('hex')): { pinHash: string; pinSalt: string } {
+  return { pinHash: scryptSync(pin, salt, 32).toString('hex'), pinSalt: salt }
+}
 
 const localDay = (time: number) => {
   const date = new Date(time)
@@ -125,17 +206,32 @@ export class Engine {
   private readonly histories = new Map<string, History>()
   private readonly imports = new Map<Id, Parsed[]>()
   private bibleList: BibleText[]
+  private settings: EngineSettings
+  /** What the screens show while rehearsing; null when not rehearsing. */
+  private onAir: EngineState | null = null
+  /** The live slide and playback the timers below were set for; compared by identity, since every change makes a new object. */
+  private timedSlide: EngineState['live']['slide'] = null
+  private timedPlayback: EngineState['playback'] = null
+  private advanceTimer: ReturnType<typeof setTimeout> | null = null
+  private mediaTimer: ReturnType<typeof setTimeout> | null = null
+  private failedUnlocks = 0
+  private unlockBlockedUntil = 0
   private readonly channels = new Map<OutputId, OutputChannel>()
+  private readonly downloads = new Map<number, BibleDownload & { isCancelled: boolean }>()
+  /** One fetch per catalogue language per session; a failed fetch is forgotten so it can be retried. */
+  private readonly songPacks = new Map<string, ReturnType<SongCatalogClient['pack']>>()
 
   constructor(options: EngineOptions) {
     this.options = options
     this.library = options.library
     this.bibleList = options.bibles ?? []
+    this.settings = options.settings ?? { isLocked: false }
     const services = Object.values(options.library.services).sort(byName)
     const serviceId = options.restored?.serviceId ?? lookup(options.library.services, options.serviceId)?.id ?? services[0]?.id ?? null
     this.decks = buildDecks(lookup(this.library.services, serviceId) ?? noService, this.library, this.bibles)
     const background = Object.values(options.library.backgrounds).sort(byName)[0]?.id ?? null
     this.state = options.restored ?? initialState(this.decks, background, serviceId)
+    if (!this.state.instant) this.state = { ...this.state, instant: {} }
     this.resolveOutputs()
   }
 
@@ -159,8 +255,13 @@ export class Engine {
     return this.library
   }
 
-  private get context() {
-    return { decks: this.decks, library: this.library }
+  /** The service's decks plus the library decks a state shows; outputs and the reducer see both. */
+  private decksFor(state: Partial<EngineState> = this.state): Deck[] {
+    return [...this.decks, ...buildInstantDecks(cleanInstant(state.instant), this.service, this.library, this.bibles)]
+  }
+
+  private contextFor(state: EngineState) {
+    return { decks: this.decksFor(state), library: this.library }
   }
 
   connect(port: ClientPort, hello: ClientHello): void {
@@ -177,7 +278,17 @@ export class Engine {
   }
 
   dispatch(command: Command): void {
+    if (this.settings.isLocked && !volunteerCommands.has(command?.type)) return
     switch (command.type) {
+      case 'volunteer.lock':
+        return this.lock(command.pin)
+      case 'volunteer.setPin':
+        if (isPin(command.pin)) this.saveSettings({ ...this.settings, ...hashPin(command.pin) })
+        return
+      case 'rehearsal.start':
+        return this.setRehearsing(true)
+      case 'rehearsal.stop':
+        return this.setRehearsing(false)
       case 'song.create':
         return this.createSong(command)
       case 'song.delete':
@@ -219,6 +330,50 @@ export class Engine {
         return this.edit('passages', command.passageId, (history) => history.execute(command.edit))
       case 'scripture.quick':
         return this.quickVerse(command)
+      case 'instant.show':
+        return this.showInstant(command)
+      case 'bible.download':
+        return void this.downloadBible(command.version)
+      case 'bible.cancelDownload': {
+        const download = this.downloads.get(command.versionId)
+        if (!download) return
+        if (download.error === null) download.isCancelled = true
+        else this.downloads.delete(command.versionId)
+        return this.publish()
+      }
+      case 'bible.remove':
+        return this.removeBible(command.code)
+      case 'overlay.save': {
+        const overlay = cleanOverlay(command.overlay)
+        return overlay ? this.store('overlays', overlay) : undefined
+      }
+      case 'overlay.delete':
+        return this.removeDocument('overlays', command.overlayId)
+      case 'overlay.show':
+      case 'overlay.hide':
+        return this.toggleOverlay(command.overlayId, command.type === 'overlay.show')
+      case 'media.import':
+        return void this.importMedia(command)
+      case 'media.update': {
+        const item = lookup(this.library.media, command.mediaId)
+        return item && command.changes && typeof command.changes === 'object' ? this.store('media', cleanMediaSettings(command.changes, item)) : undefined
+      }
+      case 'media.delete':
+        return void this.deleteMedia(command.mediaId)
+      case 'media.show':
+      case 'media.control':
+        return this.playMedia(command)
+      case 'presentation.create':
+        if (!isSafeId(command.presentationId) || Object.hasOwn(this.library.presentations, command.presentationId)) return
+        return this.store('presentations', createPresentation(command.presentationId, command.title, lookup(this.library.presentations, command.fromPresentationId)))
+      case 'presentation.delete':
+        return this.deletePresentation(command.presentationId)
+      case 'presentation.edit':
+        return this.edit('presentations', command.presentationId, (history) => history.execute(command.edit))
+      case 'lowerThird.save':
+        return this.saveLowerThird(command.lowerThird)
+      case 'lowerThird.delete':
+        return this.deleteLowerThird(command.lowerThirdId)
       case 'document.undo':
         if (isEditable(command.ref?.kind)) this.edit(command.ref.kind, command.ref.id, (history) => history.undo())
         return
@@ -226,7 +381,7 @@ export class Engine {
         if (isEditable(command.ref?.kind)) this.edit(command.ref.kind, command.ref.id, (history) => history.redo())
         return
     }
-    const reduced = reduce(this.state, command, this.decks)
+    const reduced = pruneInstant(reduce(this.state, command, this.decksFor()))
     if (reduced === this.state) return
     const previousItemId = this.state.live.slide?.itemId
     const item = this.service.items.find((i) => i.id === reduced.live.slide?.itemId)
@@ -234,7 +389,7 @@ export class Engine {
     const now = this.now()
     const timing = isNewItem ? { itemId: item.id, itemStartedAt: now, serviceStartedAt: this.state.timing.serviceStartedAt ?? now } : this.state.timing
     this.setState({ ...reduced, timing })
-    if (isNewItem) this.options.onItemLive?.(item, this.service)
+    if (isNewItem && !this.onAir) this.options.onItemLive?.(item, this.service)
     this.publish()
   }
 
@@ -243,6 +398,7 @@ export class Engine {
     return {
       state: this.state,
       decks: this.decks,
+      instant: buildInstantDecks(this.state.instant, this.service, this.library, this.bibles),
       service: this.service,
       library: {
         themes: Object.values(this.library.themes).sort(byName),
@@ -250,10 +406,16 @@ export class Engine {
         audioCues: Object.values(this.library.audioCues).sort(byName),
         backgrounds: Object.values(this.library.backgrounds).sort(byName),
         lowerThirds: Object.values(this.library.lowerThirds).sort((a, b) => a.title.localeCompare(b.title)),
+        overlays: Object.values(this.library.overlays).sort(byName),
+        media: Object.values(this.library.media).sort(byName),
       },
       bibles: this.bibles.map(bibleInfo),
+      bundledBibles: this.options.bundledBibles ?? [],
+      downloadedVersionIds: this.bibles.flatMap((b) => (typeof b.remoteId === 'number' ? [b.remoteId] : [])),
+      downloads: [...this.downloads.values()].map(({ isCancelled: _, ...download }) => download),
       services: this.serviceSummaries(),
       libraryRevision: this.libraryRevision,
+      mode: { isLocked: this.settings.isLocked, hasPin: !!this.settings.pinHash, isRehearsing: this.onAir !== null },
       themeUses: this.themeUses(),
       outputs: outputs.map((o) => {
         const channel = this.channels.get(o.id)
@@ -263,10 +425,13 @@ export class Engine {
           sentSeq: channel?.render.seq ?? 0,
           ackedSeq: channel?.ackedSeq ?? 0,
           isConnected: [...this.clients].some((c) => c.hello.outputId === o.id),
+          isOn: !this.state.outputsOff.includes(o.id),
         }
       }),
-      liveRender: this.channels.get(projector.id)!.render,
-      previewRender: { seq: 0, ...resolveRender(this.state, this.context, projector, this.state.preview) },
+      // What the screens would show even when switched off, so the operator can check before turning one on.
+      liveRender: { seq: 0, ...resolveRender(this.state, this.contextFor(this.state), projector) },
+      stageRender: { seq: 0, ...resolveRender(this.state, this.contextFor(this.state), outputs[1]) },
+      previewRender: { seq: 0, ...resolveRender(this.state, this.contextFor(this.state), projector, this.state.preview) },
     }
   }
 
@@ -274,7 +439,11 @@ export class Engine {
     if (message?.type === 'command' && client.hello.role === 'operator') {
       this.dispatch(message.command)
     } else if (message?.type === 'query' && client.hello.role === 'operator' && typeof message.requestId === 'number') {
-      client.port.send({ type: 'result', requestId: message.requestId, result: this.query(message.query) })
+      const { requestId } = message
+      const result = this.query(message.query)
+      const send = (answer: QueryResult) => client.port.send({ type: 'result', requestId, result: answer })
+      if (result instanceof Promise) void result.then(send)
+      else send(result)
     } else if (message?.type === 'watch' && client.hello.role === 'operator') {
       const ref = message.ref
       client.watching = ref && typeof ref.id === 'string' && typeof ref.kind === 'string' ? { kind: ref.kind, id: ref.id } : null
@@ -287,13 +456,23 @@ export class Engine {
     }
   }
 
-  private query(query: Extract<ClientMessage, { type: 'query' }>['query']): QueryResult {
+  private query(query: Extract<ClientMessage, { type: 'query' }>['query']): QueryResult | Promise<QueryResult> {
     const index = this.options.index
     const hits = (list: SearchHit[]): QueryResult => ({ type: 'hits', hits: list })
     if (query?.type === 'scripture.slides') {
       const passage = lookup(this.library.passages, query.passageId)
       return { type: 'slides', slides: passage?.ref ? scriptureSlides(passage, this.bibles) : [] }
     }
+    if (query?.type === 'song.slides') {
+      const source = cleanSource({ type: 'song', songId: query.songId, arrangementId: query.arrangementId })
+      const deck = source && buildInstantDecks({ [instantId(source)]: source }, this.service, this.library, this.bibles)[0]
+      return { type: 'slides', slides: deck && lookup(this.library.songs, query.songId) ? deck.slides : [] }
+    }
+    if (query?.type === 'bible.chapter') return { type: 'chapter', chapter: this.chapterView(query.book, query.chapter, query.translations) }
+    if (query?.type === 'volunteer.unlock') return this.unlock(query.pin)
+    if (query?.type === 'bible.catalog') return this.catalog(query.languageTag)
+    if (query?.type === 'songs.languages' || query?.type === 'songs.catalog' || query?.type === 'songs.preview') return this.songCatalog(query)
+    if (this.settings.isLocked && (query?.type === 'import.preview' || query?.type === 'import.apply')) return hits([])
     if (query?.type === 'import.preview') return { type: 'importPlan', plan: this.previewImport(query.files) }
     if (query?.type === 'import.apply') return { type: 'importReport', report: this.applyImport(query.importId, query.decisions, query.bibles) }
     if (query?.type === 'song.outlines') {
@@ -314,7 +493,11 @@ export class Engine {
     const sources = (Array.isArray(files) ? files : [])
       .filter((f): f is ImportFile => typeof f?.name === 'string' && f.data instanceof ArrayBuffer)
       .map((f) => ({ name: f.name, bytes: new Uint8Array(f.data) }))
-    const parsed = readFiles(sources)
+    return this.remember(readFiles(sources))
+  }
+
+  /** Keeps what was read until the operator applies their choices; only the last few previews are kept. */
+  private remember(parsed: Parsed[]): { importId: Id; items: ReturnType<typeof planItems> } {
     const importId = newId('import')
     this.imports.set(importId, parsed)
     while (this.imports.size > 5) this.imports.delete(this.imports.keys().next().value!)
@@ -375,6 +558,141 @@ export class Engine {
     return [...new Set(chosen)].slice(0, 4)
   }
 
+  /** A whole chapter as the Bible tab lists it; the slide indexes match what `instant.show` with `source` presents. */
+  private chapterView(book: unknown, chapter: unknown, translations: unknown): ChapterView | null {
+    const codes = this.validTranslations(translations).slice(0, 2)
+    const source = cleanSource({ type: 'scripture', ref: { book, startChapter: chapter, startVerse: null, endChapter: chapter, endVerse: null }, translations: codes, versesPerSlide: 1 })
+    if (source?.type !== 'scripture') return null
+    const chosen = codes.flatMap((code) => this.bibles.filter((b) => b.code === code))
+    const rows = versesFor(source.ref, chosen)
+    const slides = passageSlides(source.ref, rows, { splitLong: true, translations: codes, versesPerSlide: 1 }, this.bibles)
+    const [main, secondary] = codes
+    return {
+      source,
+      chapterCount: chosen[0]?.books[source.ref.book]?.length || bookById(source.ref.book)!.chapters,
+      verses: rows.map((row) => ({
+        verse: row.verse,
+        main: (main && row.texts[main]) || '',
+        secondary: (secondary && row.texts[secondary]) || '',
+        slideIndex: Math.max(0, slides.findIndex((s) => s.verse === row.verse)),
+      })),
+    }
+  }
+
+  private async catalog(languageTag: unknown): Promise<QueryResult> {
+    const bibleCom = this.options.bibleCom
+    if (this.settings.isLocked || !bibleCom || typeof languageTag !== 'string' || !/^[a-z]{2,8}(-[A-Za-z0-9]{1,8})*$/.test(languageTag)) {
+      return { type: 'catalog', versions: [], error: 'The catalogue is not available.' }
+    }
+    try {
+      return { type: 'catalog', versions: await bibleCom.client.versions(languageTag), error: null }
+    } catch (error) {
+      return { type: 'catalog', versions: [], error: error instanceof BibleComError ? error.message : 'The catalogue could not be read.' }
+    }
+  }
+
+  private async songCatalog(query: Extract<LibraryQuery, { type: 'songs.languages' | 'songs.catalog' | 'songs.preview' }>): Promise<QueryResult> {
+    const client = typeof query.source === 'string' && Object.hasOwn(this.options.songSources ?? {}, query.source) ? this.options.songSources![query.source] : undefined
+    const failed = (error: unknown) => (error instanceof Error && error.name === 'SongSourceError' ? error.message : 'The song catalogue is not available.')
+    if (this.settings.isLocked || !client) {
+      if (query.type === 'songs.languages') return { type: 'songLanguages', languages: [], error: 'The song catalogue is not available.' }
+      if (query.type === 'songs.catalog') return { type: 'songCatalog', songs: [], error: 'The song catalogue is not available.' }
+      return { type: 'importPlan', plan: { importId: '', items: [] } }
+    }
+    if (query.type === 'songs.languages') {
+      return client.languages().then(
+        (languages) => ({ type: 'songLanguages', languages, error: null }),
+        (error) => ({ type: 'songLanguages', languages: [], error: failed(error) }),
+      )
+    }
+    const key = `${query.source}/${query.language}`
+    if (!this.songPacks.has(key)) {
+      const pack = client.pack(String(query.language))
+      pack.catch(() => this.songPacks.delete(key))
+      this.songPacks.set(key, pack)
+    }
+    try {
+      const pack = await this.songPacks.get(key)!
+      if (query.type === 'songs.catalog') return { type: 'songCatalog', songs: pack.songs, error: null }
+      const label = songSources.find((s) => s.key === query.source)!.label
+      const ids = Array.isArray(query.songIds) ? query.songIds.filter((id) => Number.isInteger(id)).slice(0, 2000) : []
+      const parsed: Parsed[] = ids.map((id) => {
+        const song = pack.imported.get(id)
+        const listed = pack.songs.find((s) => s.id === id)
+        if (!song) return { kind: 'unreadable', file: `${label} song ${id}`, format: label, reason: 'This song is no longer in the catalogue.' }
+        const caution = listed?.isRestricted ? `${label} marks this song as copyrighted; showing it needs your church’s licence.` : undefined
+        return { kind: 'song', file: `${label}: ${song.title}`, format: label, song, ...(caution && { caution }) }
+      })
+      return { type: 'importPlan', plan: this.remember(parsed) }
+    } catch (error) {
+      if (query.type === 'songs.catalog') return { type: 'songCatalog', songs: [], error: failed(error) }
+      return { type: 'importPlan', plan: this.remember([{ kind: 'unreadable', file: 'Song catalogue', format: '', reason: failed(error) }]) }
+    }
+  }
+
+  /**
+   * Fetches a version chapter by chapter in the background and installs it when every chapter is in.
+   * Running it again after a failure resumes from the chapters already saved.
+   */
+  private async downloadBible(raw: unknown): Promise<void> {
+    const bibleCom = this.options.bibleCom
+    const version = cleanRemoteVersion(raw)
+    if (!bibleCom || !version || this.downloads.get(version.id)?.error === null || this.bibles.some((b) => b.remoteId === version.id)) return
+    const abbreviation = version.abbreviation.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) || 'BIBLE'
+    const code = this.bibles.some((b) => b.code.toUpperCase() === abbreviation) ? `${abbreviation}-${version.id}`.slice(0, 16) : abbreviation
+    const download = { version, done: 0, total: 0, error: null, isRefused: false, isCancelled: false }
+    this.downloads.set(version.id, download)
+    this.publish()
+    let lastPublished = 0
+    try {
+      const bible = await downloadVersion(bibleCom.client, version, code, {
+        stagingDir: bibleCom.stagingDir,
+        retryDelayMs: bibleCom.retryDelayMs,
+        isCancelled: () => download.isCancelled,
+        onProgress: (done, total) => {
+          Object.assign(download, { done, total })
+          // Progress arrives per chapter; a snapshot per chapter would flood the operator window.
+          if (done === total || this.now() - lastPublished > 500) {
+            lastPublished = this.now()
+            this.sendSnapshots()
+          }
+        },
+      })
+      this.downloads.delete(version.id)
+      const installed: BibleText = { ...bible, remoteId: version.id }
+      this.bibleList = [...this.bibleList.filter((b) => b.code !== installed.code), installed]
+      this.options.onBibleImported?.(installed)
+      this.libraryRevision++
+      this.decks = buildDecks(this.service, this.library, this.bibles)
+    } catch (error) {
+      if (error instanceof DownloadCancelled) this.downloads.delete(version.id)
+      else Object.assign(download, { error: error instanceof BibleComError ? error.message : 'The download stopped unexpectedly.', isRefused: error instanceof BibleComError && error.isRefused })
+    }
+    this.publish()
+  }
+
+  private removeBible(code: unknown): void {
+    const isBundled = (this.options.bundledBibles ?? []).includes(String(code))
+    if (typeof code !== 'string' || isBundled || !this.bibles.some((b) => b.code === code)) return
+    this.bibleList = this.bibleList.filter((b) => b.code !== code)
+    this.options.onBibleRemoved?.(code)
+    this.libraryRevision++
+    this.decks = buildDecks(this.service, this.library, this.bibles)
+    this.state = sanitize(this.state, this.decksFor(), this.library)
+    this.publish()
+  }
+
+  /** Puts a library slide in Preview or Live; the service is not touched and its timing does not move. */
+  private showInstant(command: Extract<Command, { type: 'instant.show' }>): void {
+    const source = cleanSource(command.source)
+    if (!source) return
+    const withSource = { ...this.state, instant: { ...this.state.instant, [instantId(source)]: source } }
+    const next = pruneInstant(reduce(withSource, { ...command, source, isLive: command.isLive === true }, this.decksFor(withSource)))
+    if (next === withSource || JSON.stringify(next) === JSON.stringify(this.state)) return
+    this.setState(next)
+    this.publish()
+  }
+
   private quickVerse(command: Extract<Command, { type: 'scripture.quick' }>): void {
     const parsed = typeof command.text === 'string' ? parseReference(command.text) : null
     const service = this.service
@@ -387,6 +705,90 @@ export class Engine {
   }
 
   /** Refused while a service still uses the passage. */
+  private saveLowerThird(raw: unknown): void {
+    const lowerThird = raw as Partial<LowerThird> | null
+    const text = (value: unknown, max: number) => (typeof value === 'string' ? value.trim().slice(0, max) : '')
+    if (!isSafeId(lowerThird?.id) || !text(lowerThird.title, 120)) return
+    this.store('lowerThirds', { id: lowerThird.id, title: text(lowerThird.title, 120), subtitle: text(lowerThird.subtitle, 160) })
+  }
+
+  private deleteLowerThird(lowerThirdId: Id): void {
+    this.removeDocument('lowerThirds', lowerThirdId)
+  }
+
+  private removeDocument(kind: 'lowerThirds' | 'overlays' | 'media' | 'presentations', id: Id): void {
+    if (!Object.hasOwn(this.library[kind], id)) return
+    const { [id]: _removed, ...rest } = this.library[kind] as Record<Id, unknown>
+    this.library = { ...this.library, [kind]: rest }
+    this.histories.delete(`${kind}/${id}`)
+    this.options.onDocumentRemove?.(kind, id)
+    this.afterLibraryChange({ kind, id })
+  }
+
+  /** Refused while any service uses the deck, like songs and passages. */
+  private deletePresentation(presentationId: Id): void {
+    const isUsed = Object.values(this.library.services).some((s) => s.items.some((i) => i.type === 'presentation' && i.presentationId === presentationId))
+    if (!isUsed) this.removeDocument('presentations', presentationId)
+  }
+
+  private toggleOverlay(overlayId: Id, isOn: boolean): void {
+    if (!Object.hasOwn(this.library.overlays, overlayId)) return
+    const others = this.state.live.overlays.filter((id) => id !== overlayId)
+    const overlays = isOn ? [...others, overlayId] : others
+    this.setState({ ...this.state, isBlack: isOn ? false : this.state.isBlack, live: { ...this.state.live, overlays } })
+    this.publish()
+  }
+
+  private async importMedia(command: Extract<Command, { type: 'media.import' }>): Promise<void> {
+    const { mediaDir } = this.options
+    const type = command.mediaType === 'video' ? 'video' : 'image'
+    const extension = typeof command.path === 'string' ? extname(command.path).toLowerCase() : ''
+    const isAllowed = mediaExtensions[type].includes(extension)
+    if (!mediaDir || !isSafeId(command.mediaId) || Object.hasOwn(this.library.media, command.mediaId) || !isAbsolute(command.path) || !isAllowed) return
+    const file = `${command.mediaId}${extension}`
+    try {
+      await mkdir(mediaDir, { recursive: true })
+      await copyFile(command.path, join(mediaDir, file))
+    } catch (error) {
+      console.warn('[engine] could not copy media', error)
+      return
+    }
+    const name = (typeof command.name === 'string' && command.name.trim().slice(0, 200)) || file
+    const duration = typeof command.duration === 'number' && Number.isFinite(command.duration) && command.duration > 0 ? command.duration : null
+    this.store('media', { id: command.mediaId, name, type, file, duration, fit: 'cover', volume: 1, isMuted: false, ending: 'freeze', startAt: 0, endAt: null, fadeMs: 300 })
+  }
+
+  private async deleteMedia(mediaId: Id): Promise<void> {
+    const item = lookup(this.library.media, mediaId)
+    if (!item) return
+    this.removeDocument('media', mediaId)
+    if (this.options.mediaDir) await unlink(join(this.options.mediaDir, item.file)).catch(() => {})
+  }
+
+  /** Starts, pauses or restarts the media layer; outputs play on from the position and time they are given. */
+  private playMedia(command: Extract<Command, { type: 'media.show' | 'media.control' }>): void {
+    const now = this.now()
+    const { playback, live } = this.state
+    const mediaId = command.type === 'media.show' ? command.mediaId : live.media
+    const item = lookup(this.library.media, mediaId)
+    if (!item) return
+    const playing = playback && !playback.isPaused ? playback.position + (now - playback.at) / 1000 : playback?.position ?? item.startAt
+    const fresh = { startedAt: now, position: item.startAt, at: now, isPaused: false }
+    const next =
+      command.type === 'media.show' || command.action === 'restart'
+        ? fresh
+        : !playback
+          ? fresh
+          : command.action === 'pause'
+            ? { ...playback, position: playing, at: now, isPaused: true }
+            : { ...playback, at: now, isPaused: false }
+    // A designed page has its own background and would hide what starts playing under it; lyrics stay on top of it.
+    const slide = command.type === 'media.show' ? findSlide(this.decksFor(), live.slide) : null
+    const isCovered = !!slide?.page && slide.page.background.kind !== 'none'
+    this.setState({ ...this.state, isBlack: false, playback: next, live: { ...live, media: item.id, slide: isCovered ? null : live.slide } })
+    this.publish()
+  }
+
   private deletePassage(passageId: Id): void {
     const isUsed = Object.values(this.library.services).some((s) => s.items.some((i) => i.type === 'scripture' && i.passageId === passageId))
     if (!Object.hasOwn(this.library.passages, passageId) || isUsed) return
@@ -581,7 +983,7 @@ export class Engine {
   private afterLibraryChange(ref: DocumentRef): void {
     this.libraryRevision++
     this.decks = buildDecks(this.service, this.library, this.bibles)
-    const next = sanitize(this.state, this.decks, this.library)
+    const next = sanitize(this.state, this.decksFor(), this.library)
     if (JSON.stringify(next) !== JSON.stringify(this.state)) this.setState(next)
     for (const client of this.clients) {
       if (client.watching?.kind === ref.kind && client.watching.id === ref.id) this.sendDocument(client, ref)
@@ -596,21 +998,103 @@ export class Engine {
     client.port.send({ type: 'document', ref, document, canUndo: history?.canUndo ?? false, canRedo: history?.canRedo ?? false })
   }
 
+  /** Rehearsal changes are not saved: a crash mid-rehearsal restores what was on air. */
   private setState(next: EngineState): void {
     this.state = next
-    this.options.onStateChange?.(next)
+    if (!this.onAir) this.options.onStateChange?.(next)
+  }
+
+  private saveSettings(settings: EngineSettings): void {
+    this.settings = settings
+    this.options.onSettingsChange?.(settings)
+    this.publish()
+  }
+
+  private lock(pin: string | undefined): void {
+    if (this.settings.isLocked) return
+    if (!this.settings.pinHash && !isPin(pin)) return
+    this.saveSettings({ ...this.settings, ...(this.settings.pinHash ? {} : hashPin(pin!)), isLocked: true })
+  }
+
+  /** Five wrong PINs in a row block further tries for 30 seconds, so a 4-digit PIN cannot be guessed by trying them all. */
+  private unlock(pin: unknown): QueryResult {
+    const now = this.now()
+    const wait = Math.ceil((this.unlockBlockedUntil - now) / 1000)
+    if (wait > 0) return { type: 'unlock', isUnlocked: false, waitSeconds: wait }
+    const { pinHash, pinSalt } = this.settings
+    const isRight = typeof pin === 'string' && !!pinHash && !!pinSalt && timingSafeEqual(Buffer.from(hashPin(pin, pinSalt).pinHash, 'hex'), Buffer.from(pinHash, 'hex'))
+    if (!isRight) {
+      this.failedUnlocks++
+      if (this.failedUnlocks >= 5) {
+        this.failedUnlocks = 0
+        this.unlockBlockedUntil = now + 30_000
+      }
+      return { type: 'unlock', isUnlocked: false, waitSeconds: this.unlockBlockedUntil > now ? 30 : 0 }
+    }
+    this.failedUnlocks = 0
+    this.saveSettings({ ...this.settings, isLocked: false })
+    return { type: 'unlock', isUnlocked: true, waitSeconds: 0 }
+  }
+
+  /** Rehearsing freezes the outputs on what was on air; stopping puts the operator back exactly there. */
+  private setRehearsing(isRehearsing: boolean): void {
+    if (isRehearsing === (this.onAir !== null)) return
+    if (isRehearsing) {
+      this.onAir = this.state
+    } else {
+      // Switching a screen off or on is about the hardware, so it survives the end of a rehearsal.
+      this.state = sanitize({ ...this.onAir!, outputsOff: this.state.outputsOff }, this.decksFor(this.onAir!), this.library)
+      this.onAir = null
+    }
+    this.publish()
   }
 
   private publish(): void {
     for (const id of this.resolveOutputs()) this.sendRender(id)
     this.sendSnapshots()
+    this.scheduleAdvance()
+    this.scheduleMediaEnd()
+  }
+
+  /** A page with `advanceAfter` moves on by itself, unless the operator moved first or blacked the screen. */
+  private scheduleAdvance(): void {
+    const ref = this.state.live.slide
+    if (ref === this.timedSlide) return
+    this.timedSlide = ref
+    if (this.advanceTimer) clearTimeout(this.advanceTimer)
+    this.advanceTimer = null
+    const seconds = ref ? findSlide(this.decksFor(), ref)?.advanceAfter : null
+    if (!seconds) return
+    this.advanceTimer = setTimeout(() => {
+      if (this.state.live.slide === ref && !this.state.isBlack) this.dispatch({ type: 'live.next' })
+    }, seconds * 1000)
+    this.advanceTimer.unref?.()
+  }
+
+  /** A video set to clear when it ends takes the media layer off when its time is up. */
+  private scheduleMediaEnd(): void {
+    const playback = this.state.playback
+    if (playback === this.timedPlayback) return
+    this.timedPlayback = playback
+    if (this.mediaTimer) clearTimeout(this.mediaTimer)
+    this.mediaTimer = null
+    const item = lookup(this.library.media, this.state.live.media)
+    const end = item?.endAt ?? item?.duration
+    if (!playback || playback.isPaused || !item || item.type !== 'video' || item.ending !== 'clear' || !end) return
+    const remaining = end - (playback.position + (this.now() - playback.at) / 1000)
+    this.mediaTimer = setTimeout(() => {
+      if (this.state.playback === playback) this.dispatch({ type: 'layer.clear', layer: 'media' })
+    }, Math.max(0, remaining) * 1000)
+    this.mediaTimer.unref?.()
   }
 
   /** Returns the outputs whose frame actually changed; only those get a new seq. */
   private resolveOutputs(): OutputId[] {
     const changed: OutputId[] = []
+    const onScreen = this.onAir ? sanitize(this.onAir, this.decksFor(this.onAir), this.library) : this.state
+    const context = this.contextFor(onScreen)
     for (const profile of outputs) {
-      const resolved = resolveRender(this.state, this.context, profile)
+      const resolved = this.state.outputsOff.includes(profile.id) ? blankRender(profile) : resolveRender(onScreen, context, profile)
       const json = JSON.stringify(resolved)
       const channel = this.channels.get(profile.id)
       if (channel?.json === json) continue

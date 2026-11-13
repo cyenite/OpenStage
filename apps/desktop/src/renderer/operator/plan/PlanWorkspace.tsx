@@ -5,6 +5,7 @@ import { CommitField } from '../edit/CommitField'
 import { Calendar } from './Calendar'
 import { addMonths, dayKey, longDay, monthTitle } from './dates'
 import { NewServiceDialog } from './NewServiceDialog'
+import type { AddTarget } from '../library/results'
 import { ServicePlan } from './ServicePlan'
 import { TemplatePanel } from './TemplatePanel'
 
@@ -30,10 +31,11 @@ interface PlanWorkspaceProps {
   snapshot: OperatorSnapshot
   selection: PlanSelection
   onSelection: (selection: PlanSelection) => void
+  onQuickAdd: (target: AddTarget) => void
   onPresent: () => void
 }
 
-export function PlanWorkspace({ snapshot, selection, onSelection, onPresent }: PlanWorkspaceProps) {
+export function PlanWorkspace({ snapshot, selection, onSelection, onQuickAdd, onPresent }: PlanWorkspaceProps) {
   const [newServiceDay, setNewServiceDay] = useState<string | null>(null)
   const select = (change: Partial<PlanSelection>) => onSelection({ ...selection, ...change })
   const present = (serviceId: Id) => {
@@ -52,6 +54,7 @@ export function PlanWorkspace({ snapshot, selection, onSelection, onPresent }: P
             serviceId={selection.serviceId}
             snapshot={snapshot}
             onBack={() => select({ serviceId: null })}
+            onQuickAdd={onQuickAdd}
             onPresent={() => present(selection.serviceId!)}
           />
         ) : (
@@ -113,6 +116,10 @@ export function PlanWorkspace({ snapshot, selection, onSelection, onPresent }: P
                   templateName={snapshot.library.templates.find((t) => t.id === service.templateId)?.name}
                   onPlan={() => select({ serviceId: service.id })}
                   onPresent={() => present(service.id)}
+                  onRehearse={() => {
+                    dispatch({ type: 'rehearsal.start' })
+                    present(service.id)
+                  }}
                 />
               ))}
               {dayServices.length === 0 && (
@@ -156,9 +163,10 @@ interface ServiceCardProps {
   templateName: string | undefined
   onPlan: () => void
   onPresent: () => void
+  onRehearse: () => void
 }
 
-function ServiceCard({ service, isOpen, templateName, onPlan, onPresent }: ServiceCardProps) {
+function ServiceCard({ service, isOpen, templateName, onPlan, onPresent, onRehearse }: ServiceCardProps) {
   const setTeam = (team: { operator?: string; stage?: string }) => dispatch({ type: 'service.edit', serviceId: service.id, edit: { type: 'service.setTeam', team } })
   return (
     <article id={`service-${service.id}`} className={`service-card is-${service.readiness.state}`}>
@@ -185,6 +193,9 @@ function ServiceCard({ service, isOpen, templateName, onPlan, onPresent }: Servi
       <div className="service-card-actions">
         <button className="button-quiet" onClick={onPlan}>
           Plan the order
+        </button>
+        <button className="button-quiet" title="Practise this service without changing the screens" onClick={onRehearse}>
+          Rehearse
         </button>
         <button className="button-primary" onClick={onPresent}>
           Open to present

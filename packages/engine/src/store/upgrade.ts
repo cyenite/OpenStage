@@ -1,4 +1,4 @@
-import { classicTheme, parseReference, themeBoxRoles, type ScripturePassage, type Chord, type DocumentKind, type DocumentTypes, type SlideContent, type Song, type TextLine, type Theme } from '@openstage/shared'
+import { classicTheme, cleanOverlay, cleanPage, parseReference, themeBoxRoles, type Page, type Presentation, type ScripturePassage, type Chord, type DocumentKind, type DocumentTypes, type SlideContent, type Song, type TextLine, type Theme } from '@openstage/shared'
 
 type Loose<T> = { [K in keyof T]?: unknown }
 
@@ -10,6 +10,8 @@ export function upgradeDocument<K extends DocumentKind>(kind: K, document: Docum
   if (kind === 'songs') return upgradeSong(document as Song) as DocumentTypes[K]
   if (kind === 'themes') return completeTheme(document as Theme) as DocumentTypes[K]
   if (kind === 'passages') return upgradePassage(document as ScripturePassage) as DocumentTypes[K]
+  if (kind === 'presentations') return cleanPresentation(document as Presentation) as DocumentTypes[K]
+  if (kind === 'overlays') return (cleanOverlay(document) ?? document) as DocumentTypes[K]
   return document
 }
 
@@ -62,3 +64,12 @@ function upgradeLine(line: unknown): TextLine {
   const chords = Array.isArray(raw.chords) ? raw.chords.filter((c): c is Chord => typeof c?.chord === 'string' && Number.isInteger(c?.offset)) : []
   return { text: typeof raw.text === 'string' ? raw.text : '', chords }
 }
+
+/** Pages are checked field by field, so a hand-edited deck can never hand an output a malformed element. */
+function cleanPresentation(presentation: Presentation): Presentation {
+  const raw = presentation as Loose<Presentation> & Presentation
+  const pages = (Array.isArray(raw.pages) ? raw.pages : []).map(cleanPage).filter((p): p is Page => p !== null)
+  return { id: presentation.id, title: typeof raw.title === 'string' ? raw.title : 'Untitled slides', isLooping: raw.isLooping === true, pages }
+}
+
+

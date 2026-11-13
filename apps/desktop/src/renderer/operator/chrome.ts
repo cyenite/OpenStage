@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Chrome, ThemeSource, WindowState } from '../../chrome'
+import type { Chrome, ScreensState, ThemeSource, WindowState } from '../../chrome'
 
 declare global {
   interface Window {
@@ -52,19 +52,31 @@ export function useWorkspace() {
   return useState<Workspace>('present')
 }
 
-export function useAppearance() {
+/** Auto follows the system, except that a screen meant for a dark room (Present) is dark unless Light is chosen. */
+export function useAppearance(isDarkRoom: boolean) {
   const [appearance, setAppearance] = useStored<Appearance>('openstage.appearance', appearances, 'auto')
+  const shown: Appearance = appearance === 'auto' && isDarkRoom ? 'dark' : appearance
   useEffect(() => {
     const root = document.documentElement
-    if (appearance === 'auto') delete root.dataset['theme']
-    else root.dataset['theme'] = appearance
-    chrome?.setTheme(appearances.find((a) => a.key === appearance)!.source)
-  }, [appearance])
+    if (shown === 'auto') delete root.dataset['theme']
+    else root.dataset['theme'] = shown
+    chrome?.setTheme(appearances.find((a) => a.key === shown)!.source)
+  }, [shown])
   return [appearance, setAppearance] as const
 }
 
 export function useWindowState(): WindowState {
   const [state, setState] = useState<WindowState>({ isFocused: true, isMaximized: false, isFullScreen: false })
   useEffect(() => chrome?.onWindowState(setState), [])
+  return state
+}
+
+export function useScreens(): ScreensState {
+  const [state, setState] = useState<ScreensState>({ screens: [], placements: [] })
+  useEffect(() => {
+    const stop = chrome?.onScreens(setState)
+    void chrome?.getScreens().then(setState)
+    return stop
+  }, [])
   return state
 }

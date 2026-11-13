@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import type { Command, DeckSlide, SongOutline, DocumentKind, DocumentTypes, EngineMessage, LibraryQuery, OperatorSnapshot, QueryResult, SearchHit } from '@openstage/shared'
+import type { BookId, ChapterView, Command, DeckSlide, SongOutline, DocumentKind, DocumentTypes, EngineMessage, LibraryQuery, OperatorSnapshot, QueryResult, SearchHit } from '@openstage/shared'
 import { engine } from '../engine-client'
 
 let latest: OperatorSnapshot | null = null
@@ -22,8 +22,14 @@ export function dispatch(command: Command): void {
 
 /** Re-runs the query whenever its inputs change, the library changes (`revision`) or the engine reconnects. */
 function useQuery<T>(query: LibraryQuery | null, revision: number, pick: (result: QueryResult) => T | undefined, empty: T): T {
-  const [value, setValue] = useState<T>(empty)
+  return useQueryState(query, revision, pick, empty).value
+}
+
+/** Like `useQuery`, and says whether the value answers the current query or is still the previous one's. */
+function useQueryState<T>(query: LibraryQuery | null, revision: number, pick: (result: QueryResult) => T | undefined, empty: T): { value: T; isFresh: boolean } {
+  const [answer, setAnswer] = useState<{ key: string | null; value: T }>({ key: null, value: empty })
   const key = JSON.stringify(query)
+  const setValue = (value: T) => setAnswer({ key, value })
   useEffect(() => {
     if (!query) return setValue(empty)
     let requestId = 0
@@ -43,7 +49,7 @@ function useQuery<T>(query: LibraryQuery | null, revision: number, pick: (result
       stopReconnect()
     }
   }, [key, revision])
-  return value
+  return { value: answer.value, isFresh: answer.key === key }
 }
 
 /** One request and its answer, for queries the UI runs on demand rather than follows. */
@@ -63,6 +69,12 @@ const noHits: SearchHit[] = []
 const noOutlines: SongOutline[] = []
 const noSlides: DeckSlide[] = []
 
+/** Search hits plus whether they answer the text as typed now, for actions that must not act on stale results. */
+export function useLibrarySearch(query: LibraryQuery, revision: number): { hits: SearchHit[]; isFresh: boolean } {
+  const { value, isFresh } = useQueryState(query, revision, (result) => (result.type === 'hits' ? result.hits : undefined), noHits)
+  return { hits: value, isFresh }
+}
+
 export function useLibraryQuery(query: LibraryQuery, revision: number): SearchHit[] {
   return useQuery(query, revision, (result) => (result.type === 'hits' ? result.hits : undefined), noHits)
 }
@@ -74,6 +86,17 @@ export function useSongOutlines(songIds: string[], revision: number): SongOutlin
 export function useScriptureSlides(passageId: string | null, revision: number): DeckSlide[] {
   const query = passageId ? ({ type: 'scripture.slides', passageId } as const) : null
   return useQuery(query, revision, (result) => (result.type === 'slides' ? result.slides : undefined), noSlides)
+}
+
+export function useSongSlides(songId: string | null, revision: number): DeckSlide[] {
+  const query = songId ? ({ type: 'song.slides', songId } as const) : null
+  return useQuery(query, revision, (result) => (result.type === 'slides' ? result.slides : undefined), noSlides)
+}
+
+/** One chapter in up to two Bibles; null until it arrives, or when the book or chapter does not exist. */
+export function useChapter(book: BookId, chapter: number, translations: string[], revision: number): ChapterView | null {
+  const query = translations.length > 0 ? ({ type: 'bible.chapter', book, chapter, translations } as const) : null
+  return useQuery(query, revision, (result) => (result.type === 'chapter' ? result.chapter : undefined), null)
 }
 
 export interface WatchedDocument<K extends DocumentKind> {

@@ -1,4 +1,6 @@
 import type { BackgroundRender, LowerThirdRender, RenderState, SlideRender, TextBoxRender } from '@openstage/shared'
+import { MediaLayer, OverlayLayer } from './layers'
+import { buildPage, clockText, type SurfaceMode } from './page'
 import { StageView } from './stage'
 
 /**
@@ -10,15 +12,26 @@ export class OutputSurface {
   private readonly slide: LayerView
   private readonly background: LayerView
   private readonly lowerThird: LayerView
+  private readonly media: MediaLayer
+  private readonly overlays: OverlayLayer
   private readonly stageView: StageView
+  private readonly mode: SurfaceMode
+  private readonly clockTimer: ReturnType<typeof setInterval>
 
-  constructor(host: HTMLElement) {
+  /** Monitors in the operator window pass `isMuted`; slide thumbnails also pass `isStatic`, so nothing moves or plays. */
+  constructor(host: HTMLElement, mode: Partial<SurfaceMode> = {}) {
+    this.mode = { isMuted: mode.isMuted ?? false, isStatic: mode.isStatic ?? false }
     host.classList.add('os-host')
     this.stage = append(host, 'os-stage')
-    this.background = new LayerView(this.stage)
-    this.slide = new LayerView(this.stage)
-    this.lowerThird = new LayerView(this.stage)
+    if (this.mode.isStatic) this.stage.classList.add('is-static')
+    // One fixed container per layer: a layer's new frame is appended inside its own container, never over the layers above it.
+    this.background = new LayerView(append(this.stage, 'os-layer-slot'))
+    this.media = new MediaLayer(append(this.stage, 'os-layer-slot'), this.mode)
+    this.slide = new LayerView(append(this.stage, 'os-layer-slot'))
+    this.lowerThird = new LayerView(append(this.stage, 'os-layer-slot'))
+    this.overlays = new OverlayLayer(append(this.stage, 'os-layer-slot'), this.mode)
     this.stageView = new StageView(this.stage)
+    this.clockTimer = setInterval(() => this.tick(), 250)
     void document.fonts?.ready.then(() => this.refit())
   }
 
@@ -26,14 +39,28 @@ export class OutputSurface {
     const ms = state.transitionMs
     this.stage.style.setProperty('--os-aspect', String(state.aspect))
     this.background.show(state.background, ms, buildBackground)
-    this.slide.show(state.slide, ms, buildSlide)
+    this.media.render(state.media ?? null)
+    this.slide.show(state.slide, ms, (slide) => buildSlide(slide, this.mode))
     this.lowerThird.show(state.lowerThird, ms, buildLowerThird)
+    this.overlays.render(state.overlays ?? [])
     this.stageView.render(state.stage ?? null)
   }
 
   destroy(): void {
+    clearInterval(this.clockTimer)
+    this.media.render(null)
+    this.overlays.destroy()
     this.stageView.destroy()
     this.stage.remove()
+  }
+
+  /** Clocks and countdowns on pages and overlays redraw themselves; the engine only sends their settings. */
+  private tick(): void {
+    const now = Date.now()
+    this.stage.querySelectorAll<HTMLElement>('[data-clock]').forEach((clock) => {
+      const text = clockText(clock.dataset.clock!, now)
+      if (clock.textContent !== text) clock.textContent = text
+    })
   }
 
   private refit(): void {
@@ -85,10 +112,14 @@ function buildBackground(background: BackgroundRender): HTMLElement {
   return element
 }
 
-function buildSlide(slide: SlideRender): HTMLElement {
+function buildSlide(slide: SlideRender, mode: SurfaceMode): HTMLElement {
   const element = document.createElement('div')
   element.className = 'os-slide'
   element.dataset.key = slide.key
+  if (slide.page) {
+    element.append(buildPage(slide.page, mode))
+    return element
+  }
   if (slide.fill) element.style.background = paint(slide.fill)
   for (const box of slide.boxes) element.append(buildBox(box))
   return element

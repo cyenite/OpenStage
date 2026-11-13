@@ -3,8 +3,25 @@ import type { BibleInfo, ImportDecision, ImportItem, ImportPlan, ImportReport } 
 import { ask } from '../engine'
 import { commonLanguages } from './languages'
 
+/** Where the songs or Bibles come from: dropped files, or a song catalogue. `load` asks the engine for the plan. */
+export interface ImportSource {
+  label: string
+  load: () => Promise<ImportPlan | null>
+}
+
+export function filesSource(files: File[]): ImportSource {
+  return {
+    label: files.length === 1 ? files[0]!.name : `${files.length} files`,
+    load: async () => {
+      const read = await Promise.all(files.map(async (f) => ({ name: f.name, data: await f.arrayBuffer() })))
+      const result = await ask({ type: 'import.preview', files: read })
+      return result.type === 'importPlan' ? result.plan : null
+    },
+  }
+}
+
 interface ImportDialogProps {
-  files: File[]
+  source: ImportSource
   installedBibles: string[]
   onClose: () => void
 }
@@ -23,7 +40,7 @@ const statusLabels = { new: 'New', duplicate: 'Already here', unreadable: 'Can�
  * Import never overwrites anything on its own: it reads the files, shows what it found and what
  * already exists, and only acts on the choices made here.
  */
-export function ImportDialog({ files, installedBibles, onClose }: ImportDialogProps) {
+export function ImportDialog({ source, installedBibles, onClose }: ImportDialogProps) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [stage, setStage] = useState<Stage>({ kind: 'reading' })
   const [decisions, setDecisions] = useState<Record<string, ImportDecision>>({})
@@ -32,14 +49,13 @@ export function ImportDialog({ files, installedBibles, onClose }: ImportDialogPr
 
   useEffect(() => {
     dialog.current?.showModal()
-    void Promise.all(files.map(async (f) => ({ name: f.name, data: await f.arrayBuffer() }))).then(async (read) => {
-      const result = await ask({ type: 'import.preview', files: read })
-      if (result.type !== 'importPlan') return
-      setDecisions(Object.fromEntries(result.plan.items.map((i) => [i.key, i.status === 'new' ? 'add' : 'skip'])))
-      setBibles(Object.fromEntries(result.plan.items.flatMap((i) => (i.bible ? [[i.key, { code: i.bible.code, name: i.bible.name, language: i.bible.language, notice: i.bible.notice }]] : []))))
-      setStage({ kind: 'choosing', plan: result.plan })
+    void source.load().then((plan) => {
+      if (!plan) return
+      setDecisions(Object.fromEntries(plan.items.map((i) => [i.key, i.status === 'new' ? 'add' : 'skip'])))
+      setBibles(Object.fromEntries(plan.items.flatMap((i) => (i.bible ? [[i.key, { code: i.bible.code, name: i.bible.name, language: i.bible.language, notice: i.bible.notice }]] : []))))
+      setStage({ kind: 'choosing', plan })
     })
-  }, [files])
+  }, [source])
 
   const apply = async (plan: ImportPlan) => {
     setStage({ kind: 'importing' })
@@ -56,7 +72,7 @@ export function ImportDialog({ files, installedBibles, onClose }: ImportDialogPr
     <dialog ref={dialog} className="dialog import-dialog" aria-labelledby="import-title" onClose={onClose}>
       <div className="import-body">
         <h2 id="import-title">Import</h2>
-        {stage.kind === 'reading' && <p className="muted">Reading {files.length === 1 ? files[0]!.name : `${files.length} files`}…</p>}
+        {stage.kind === 'reading' && <p className="muted">Reading {source.label}…</p>}
         {stage.kind === 'importing' && <p className="muted">Importing…</p>}
         {plan && (
           <>

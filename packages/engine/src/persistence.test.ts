@@ -2,7 +2,7 @@ import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { initialStage, type EngineState } from '@openstage/shared'
+import { initialStage, instantId, type EngineState } from '@openstage/shared'
 import { buildDecks } from './decks'
 import { atomicWriteJson, CoalescingWriter, loadLiveState } from './persistence'
 import { testBibles } from './bibles/fixture'
@@ -35,7 +35,7 @@ describe('persistence', () => {
     const path = join(await tempDir(), 'live-state.json')
     const state: EngineState = {
       ...initialState(decks, 'candle', 'sunday'),
-      live: { slide: { itemId: decks[0]!.itemId, index: 3 }, audio: 'walk-in', background: 'candle', lowerThird: 'pastor' },
+      live: { slide: { itemId: decks[0]!.itemId, index: 3 }, audio: 'walk-in', background: 'candle', lowerThird: 'pastor', media: null, overlays: [] },
     }
     const saver = new CoalescingWriter<EngineState>(
       (value) => atomicWriteJson(path, value),
@@ -51,16 +51,32 @@ describe('persistence', () => {
 
   it('drops references to content that no longer exists', async () => {
     const path = join(await tempDir(), 'live-state.json')
-    const raw = { serviceId: 'sunday', preview: { itemId: 'gone', index: 0 }, live: { slide: { itemId: decks[0]!.itemId, index: 42 }, background: 'gone', audio: null, lowerThird: null } }
+    const raw = { serviceId: 'sunday', preview: { itemId: 'gone', index: 0 }, live: { slide: { itemId: decks[0]!.itemId, index: 42 }, background: 'gone', audio: null, lowerThird: null, media: null, overlays: [] } }
     await writeFile(path, JSON.stringify(raw))
     expect(await loadLiveState(path, starterLibrary)).toEqual({
+      isBlack: false,
+      outputsOff: [],
+      backgroundPickedFor: null,
+      playback: null,
+      instant: {},
       stage: initialStage,
       serviceId: 'sunday',
       timing: { itemId: null, itemStartedAt: null, serviceStartedAt: null },
       preview: null,
       selectedItemId: null,
-      live: { slide: null, audio: null, background: null, lowerThird: null },
+      live: { slide: null, audio: null, background: null, lowerThird: null, media: null, overlays: [] },
     })
+  })
+
+  it('restores a library slide that was live, and drops a forged library source', async () => {
+    const path = join(await tempDir(), 'live-state.json')
+    const source = { type: 'song', songId: 'it-is-well' } as const
+    const id = instantId(source)
+    const raw = { serviceId: 'sunday', instant: { [id]: source, 'instant-song-forged': source }, live: { slide: { itemId: id, index: 0 } } }
+    await writeFile(path, JSON.stringify(raw))
+    const restored = await loadLiveState(path, starterLibrary)
+    expect(restored!.live.slide).toEqual({ itemId: id, index: 0 })
+    expect(restored!.instant).toEqual({ [id]: source })
   })
 
   it('returns null for a missing or corrupt file, or a service that is gone', async () => {

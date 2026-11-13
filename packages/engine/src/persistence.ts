@@ -1,7 +1,8 @@
 import { mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { BibleText, EngineState, Library } from '@openstage/shared'
-import { buildDecks } from './decks'
+import { buildDecks, buildInstantDecks } from './decks'
+import { cleanInstant } from './instant'
 import { sanitize } from './state'
 
 let tempCounter = 0
@@ -39,7 +40,8 @@ export async function loadLiveState(path: string, library: Library, bibles: Bibl
   }
   const service = raw?.serviceId ? library.services[raw.serviceId] : undefined
   if (!service) return null
-  return sanitize(raw, buildDecks(service, library, bibles), library)
+  const decks = [...buildDecks(service, library, bibles), ...buildInstantDecks(cleanInstant(raw.instant), service, library, bibles)]
+  return sanitize(raw, decks, library)
 }
 
 /** Coalesces rapid changes into one write; at most one write is in flight at a time. */
