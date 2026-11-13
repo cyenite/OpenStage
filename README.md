@@ -26,10 +26,38 @@ pnpm test:e2e     # builds, then drives the real app with Playwright
 On Linux, run the end-to-end tests off screen with `xvfb-run -a pnpm test:e2e` (unset `WAYLAND_DISPLAY`
 first on a Wayland desktop, or Electron opens on your screen).
 
-Output windows go frameless over each extra display (projector first, then stage). With only one display
-they open as small windows on the right of the screen. `OPENSTAGE_WINDOWED_OUTPUTS=1` forces windowed
-outputs even when displays are attached; `OPENSTAGE_USER_DATA=<dir>` points the app at a different data
-folder.
+Output windows go frameless over each screen other than the operator's (projector first, then stage), and
+follow screens as they are plugged in or pulled out. "Shows on" under each screen in Present picks a
+particular screen or a window, remembered per machine. With no spare screen they open as small windows
+beside the operator. `OPENSTAGE_WINDOWED_OUTPUTS=1` forces windowed outputs even when displays are
+attached; `OPENSTAGE_USER_DATA=<dir>` points the app at a different data folder.
+
+On a Linux Wayland desktop the app runs under XWayland (`--ozone-platform=x11`), because Wayland does not
+let an app put its windows on a chosen screen. The scripts pass the flag; any other launch restarts itself
+with it. Pass `--ozone-platform=wayland` to stay on Wayland.
+
+## Download
+
+Installers for Windows (`.exe`), macOS (`.dmg`, Apple Silicon and Intel) and Linux (`.deb` and
+`.AppImage`) are on the [releases page](https://github.com/cyenite/OpenStage/releases/latest). The website
+is at [cyenite.github.io/OpenStage](https://cyenite.github.io/OpenStage/).
+
+- The builds are not code-signed yet. Windows SmartScreen asks for "More info" then "Run anyway"; on macOS,
+  right-click the app and choose Open, or run `xattr -cr /Applications/OpenStage.app`.
+- The AppImage needs `libfuse2` (`sudo apt install libfuse2t64` on Ubuntu 24.04). The `.deb` does not.
+
+## Releasing
+
+Push a version tag and GitHub Actions builds every installer and publishes a release with them:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The version comes from the tag (a tag with a hyphen, such as `v0.1.0-beta.1`, is marked as a pre-release).
+`pnpm --filter @openstage/desktop dist` packages for the current OS locally, into `apps/desktop/release`.
+The website in `website/` deploys to GitHub Pages on every push to `main` that changes it.
 
 ### Operator keys
 

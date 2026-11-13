@@ -144,7 +144,8 @@ function serveMedia(): void {
 }
 
 if (needsX11) {
-  app.relaunch({ args: [...process.argv.slice(1), '--ozone-platform=x11'] })
+  // An AppImage runs from a mount that goes away when this process exits, so relaunch the image itself.
+  app.relaunch({ execPath: process.env['APPIMAGE'], args: [...process.argv.slice(1), '--ozone-platform=x11'] })
   app.exit(0)
 } else if (!app.requestSingleInstanceLock()) {
   app.quit()

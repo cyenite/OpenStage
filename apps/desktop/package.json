@@ -3,13 +3,17 @@
   "private": true,
   "version": "0.0.0",
   "description": "OpenStage operator app: Electron main process, engine host, operator and output windows",
+  "author": "Aaron Rono <aaronrono42@gmail.com>",
+  "homepage": "https://cyenite.github.io/OpenStage/",
+  "desktopName": "openstage.desktop",
   "license": "GPL-3.0-or-later",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev -- --ozone-platform=x11",
     "build": "electron-vite build",
     "start": "electron-vite preview -- --ozone-platform=x11",
-    "typecheck": "tsc -p tsconfig.node.json && tsc -p tsconfig.web.json"
+    "typecheck": "tsc -p tsconfig.node.json && tsc -p tsconfig.web.json",
+    "dist": "electron-vite build && electron-builder"
   },
   "devDependencies": {
     "@openstage/engine": "workspace:*",
@@ -19,6 +23,7 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.1.2",
     "electron": "44.9.0",
+    "electron-builder": "26.18.0",
     "electron-vite": "6.0.0",
     "react": "19.2.9",
     "react-dom": "19.2.9",
