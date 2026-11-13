@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration "app": the unpacked Windows app, signed before the installer is built around it.
+  Only OpenStage.exe is ours to sign; Electron's DLLs are upstream binaries and stay as they are.
+  windowsVersion is the four-part form electron-builder writes into the exe, e.g. 0.1.0.0.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="windowsVersion" required="true" />
+  </parameters>
+  <zip-file>
+    <pe-file path="OpenStage.exe" product-name="OpenStage" product-version="${windowsVersion}">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>
