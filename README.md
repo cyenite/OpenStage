@@ -77,6 +77,7 @@ folder.
 | `packages/output` | `OutputSurface`, the DOM renderer for a `RenderState`, with crossfades and text fit |
 | `packages/shared` | Types shared by everything: library model, layers, `RenderState`, wire protocol |
 | `apps/mobile` | Flutter remote, stage and congregation apps (placeholders until phase 2) |
+| `website` | The homepage: one self-contained `index.html`, no build step |
 | `e2e` | Playwright tests that launch the real Electron app |
 | `docs` | Research, blueprint and plans |
 
