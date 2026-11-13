@@ -6,9 +6,9 @@
   "license": "GPL-3.0-or-later",
   "main": "out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "electron-vite dev -- --ozone-platform=x11",
     "build": "electron-vite build",
-    "start": "electron-vite preview",
+    "start": "electron-vite preview -- --ozone-platform=x11",
     "typecheck": "tsc -p tsconfig.node.json && tsc -p tsconfig.web.json"
   },
   "devDependencies": {

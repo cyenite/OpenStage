@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { classicTheme, layers, lookup, type Layer, type LayerKey, type OperatorSnapshot, type OutputStatus, type RenderState, type SlideRef } from '@openstage/shared'
+import type { OutputPlacement, ScreenInfo } from '../../../chrome'
+import { chrome, useScreens } from '../chrome'
 import { dispatch } from '../engine'
 import { useStoredState } from '../library/useStoredState'
 import { LowerThirdsPanel } from './LowerThirdsPanel'
@@ -31,6 +33,7 @@ export function OutputColumn({ snapshot }: { snapshot: OperatorSnapshot }) {
     const timer = setInterval(() => setNow(Date.now()), 500)
     return () => clearInterval(timer)
   }, [])
+  const { screens, placements } = useScreens()
   const renders: Record<string, RenderState> = { projector: snapshot.liveRender, stage: snapshot.stageRender }
   return (
     <aside className="output-column" aria-label="Screens">
@@ -38,7 +41,9 @@ export function OutputColumn({ snapshot }: { snapshot: OperatorSnapshot }) {
         <ScreenPanel
           key={output.id}
           output={output}
+          screens={screens}
           snapshot={snapshot}
+          placement={placements.find((p) => p.outputId === output.id) ?? null}
           render={renders[output.id] ?? snapshot.liveRender}
           isPreviewing={previews[output.id] ?? output.id === 'projector'}
           onPreview={(isPreviewing) => setPreviews({ ...previews, [output.id]: isPreviewing })}
@@ -73,13 +78,15 @@ export function OutputColumn({ snapshot }: { snapshot: OperatorSnapshot }) {
 
 interface ScreenPanelProps {
   output: OutputStatus
+  screens: ScreenInfo[]
   snapshot: OperatorSnapshot
+  placement: OutputPlacement | null
   render: RenderState
   isPreviewing: boolean
   onPreview: (isPreviewing: boolean) => void
 }
 
-function ScreenPanel({ output, snapshot, render, isPreviewing, onPreview }: ScreenPanelProps) {
+function ScreenPanel({ output, screens, snapshot, placement, render, isPreviewing, onPreview }: ScreenPanelProps) {
   const { state } = snapshot
   const isProjector = output.id === 'projector'
   const status = !output.isOn ? 'Off' : !output.isConnected ? 'No window' : isProjector && state.isBlack ? 'Black' : 'On'
@@ -114,6 +121,7 @@ function ScreenPanel({ output, snapshot, render, isPreviewing, onPreview }: Scre
           <span className="switch-knob" aria-hidden="true" />
         </button>
       </div>
+      {placement && <ScreenPicker name={output.name} screens={screens} placement={placement} />}
       {isPreviewing && (
         <div className="screen-monitor">
           <RenderView className="monitor-screen" render={render} />
@@ -122,6 +130,48 @@ function ScreenPanel({ output, snapshot, render, isPreviewing, onPreview }: Scre
       )}
       {isProjector && <span className="screen-caption">{describe(snapshot, state.live.slide)}</span>}
     </section>
+  )
+}
+
+interface ScreenPickerProps {
+  name: string
+  screens: ScreenInfo[]
+  placement: OutputPlacement
+}
+
+/** Which physical screen an output goes to. The operator's own screen is listed but cannot be picked. */
+function ScreenPicker({ name, screens, placement }: ScreenPickerProps) {
+  const { choice, screenId } = placement
+  const value = choice.kind === 'screen' ? `screen:${choice.id}` : choice.kind
+  const shownOn = screens.find((s) => s.id === screenId)
+  const isMissing = choice.kind === 'screen' && !screens.some((s) => s.id === choice.id)
+  const choose = (next: string) => {
+    const picked = screens.find((s) => `screen:${s.id}` === next)
+    if (picked) chrome?.chooseScreen(placement.outputId, { kind: 'screen', id: picked.id, name: picked.name })
+    else if (next === 'auto' || next === 'window') chrome?.chooseScreen(placement.outputId, { kind: next })
+  }
+  return (
+    <div className="screen-picker">
+      <label>
+        <span>Shows on</span>
+        <select aria-label={`Screen for the ${name.toLowerCase()}`} value={value} onChange={(e) => choose(e.target.value)}>
+          <option value="auto">Automatic · {shownOn?.name ?? 'in a window'}</option>
+          {screens.map((s) => (
+            <option key={s.id} value={`screen:${s.id}`} disabled={s.isOperator}>
+              {s.name} · {s.width}×{s.height}
+              {s.isOperator ? ' · this window' : ''}
+            </option>
+          ))}
+          {isMissing && <option value={value}>{choice.name} · unplugged</option>}
+          <option value="window">A window here</option>
+        </select>
+      </label>
+      {choice.kind === 'screen' && screenId === null && (
+        <span className="screen-warning" role="status">
+          {isMissing ? `${choice.name} is not connected` : `${choice.name} is in use`}, so the {name.toLowerCase()} is in a window.
+        </span>
+      )}
+    </div>
   )
 }
 

@@ -1,8 +1,9 @@
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { app, BrowserWindow, ipcMain, nativeTheme, net, protocol, screen, type BrowserWindowConstructorOptions } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, net, protocol, screen, type BrowserWindowConstructorOptions, type Display } from 'electron'
 import { outputs, type OutputProfile } from '@openstage/engine'
 import { EngineHost } from './engine-host'
+import { isScreenChoice, ScreenManager } from './screens'
 
 if (process.env['OPENSTAGE_USER_DATA']) app.setPath('userData', process.env['OPENSTAGE_USER_DATA'])
 
@@ -12,6 +13,12 @@ const engine = new EngineHost()
 protocol.registerSchemesAsPrivileged([{ scheme: 'openstage-media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }])
 const isMac = process.platform === 'darwin'
 const forceWindowedOutputs = process.env['OPENSTAGE_WINDOWED_OUTPUTS'] === '1'
+// Native Wayland ignores where an app asks to put its windows and lists other screens only once a
+// window is up, so outputs land wherever the compositor likes. XWayland honours placement. The
+// switch must be on the real command line: appended from here, the GPU process crashes to software.
+// Electron fills in `ozone-platform` itself, so only the arguments say whether someone chose one.
+const hasOzoneChoice = process.argv.some((arg) => arg.startsWith('--ozone-platform='))
+const needsX11 = process.platform === 'linux' && !!process.env['WAYLAND_DISPLAY'] && !!process.env['DISPLAY'] && !forceWindowedOutputs && !hasOzoneChoice
 const titleBarColor = () => (nativeTheme.shouldUseDarkColors ? '#1C1C1F' : '#ECECEE')
 const themeSources = ['system', 'light', 'dark'] as const
 
@@ -60,6 +67,13 @@ function createOperatorWindow(): BrowserWindow {
   return window
 }
 
+function handleScreenRequests(screens: ScreenManager): void {
+  ipcMain.handle('screens', () => screens.state())
+  ipcMain.on('screen-choice', (_event, outputId: unknown, choice: unknown) => {
+    if (typeof outputId === 'string' && isScreenChoice(choice)) screens.choose(outputId, choice)
+  })
+}
+
 function handleWindowRequests(): void {
   ipcMain.on('window', (event, action: unknown) => {
     const window = BrowserWindow.fromWebContents(event.sender)
@@ -76,22 +90,22 @@ function handleWindowRequests(): void {
 }
 
 /**
- * An output goes frameless over the matching external display, like FreeShow does, rather than
- * using OS fullscreen. With no spare display (a laptop at rehearsal) it opens as a normal window.
+ * An output goes frameless over its display, like FreeShow does, rather than using OS fullscreen.
+ * With no display for it (a laptop at rehearsal) it opens as a normal window beside the operator.
  */
-function createOutputWindow(profile: OutputProfile, index: number): BrowserWindow {
-  const primary = screen.getPrimaryDisplay()
-  const display = forceWindowedOutputs ? undefined : screen.getAllDisplays().filter((d) => d.id !== primary.id)[index]
+function createOutputWindow(operator: BrowserWindow, profile: OutputProfile, display: Display | null): BrowserWindow {
+  const index = outputs.indexOf(profile)
   const width = 640
   const height = 360
+  const { workArea } = screen.getDisplayMatching(operator.getBounds())
   const placement: BrowserWindowConstructorOptions = display
     ? { ...display.bounds, frame: false, resizable: false, alwaysOnTop: true, skipTaskbar: true, hasShadow: false }
     : {
         width,
         height,
         useContentSize: true,
-        x: primary.workArea.x + primary.workArea.width - width - 24,
-        y: primary.workArea.y + 24 + index * (height + 48),
+        x: workArea.x + workArea.width - width - 24,
+        y: workArea.y + 24 + index * (height + 48),
       }
   const window = new BrowserWindow({
     ...placement,
@@ -101,7 +115,19 @@ function createOutputWindow(profile: OutputProfile, index: number): BrowserWindo
     webPreferences: { ...webPreferences, backgroundThrottling: false },
   })
   if (display) window.setAlwaysOnTop(true, 'screen-saver')
-  window.once('ready-to-show', () => window.showInactive())
+  // GNOME ignores the position a window is created with when it is shown without focus, and its own
+  // placement can land after a position set on show, so it is set again once that has settled.
+  window.once('show', () => {
+    const { x, y } = placement
+    if (display || x === undefined || y === undefined) return
+    window.setPosition(x, y)
+    setTimeout(() => window.isDestroyed() || window.setPosition(x, y), 300)
+  })
+  window.once('ready-to-show', () => {
+    window.showInactive()
+    // GNOME pushes a screen-sized borderless window clear of the dock, onto the next screen; fullscreen it allows.
+    if (display && process.platform === 'linux') window.setFullScreen(true)
+  })
   engine.attach(window.webContents, { role: 'output', outputId: profile.id })
   load(window, 'output', { output: profile.id })
   return window
@@ -117,17 +143,22 @@ function serveMedia(): void {
   })
 }
 
-if (!app.requestSingleInstanceLock()) {
+if (needsX11) {
+  app.relaunch({ args: [...process.argv.slice(1), '--ozone-platform=x11'] })
+  app.exit(0)
+} else if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   let isQuitting = false
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     serveMedia()
     engine.start()
     handleWindowRequests()
     const operator = createOperatorWindow()
-    outputs.forEach((profile, index) => createOutputWindow(profile, index))
+    const screens = new ScreenManager(join(app.getPath('userData'), 'screens.json'), forceWindowedOutputs, operator, (profile, display) => createOutputWindow(operator, profile, display))
+    handleScreenRequests(screens)
+    await screens.start()
     operator.focus()
   })
 

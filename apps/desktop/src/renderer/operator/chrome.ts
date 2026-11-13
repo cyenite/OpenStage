@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Chrome, ThemeSource, WindowState } from '../../chrome'
+import type { Chrome, ScreensState, ThemeSource, WindowState } from '../../chrome'
 
 declare global {
   interface Window {
@@ -68,5 +68,15 @@ export function useAppearance(isDarkRoom: boolean) {
 export function useWindowState(): WindowState {
   const [state, setState] = useState<WindowState>({ isFocused: true, isMaximized: false, isFullScreen: false })
   useEffect(() => chrome?.onWindowState(setState), [])
+  return state
+}
+
+export function useScreens(): ScreensState {
+  const [state, setState] = useState<ScreensState>({ screens: [], placements: [] })
+  useEffect(() => {
+    const stop = chrome?.onScreens(setState)
+    void chrome?.getScreens().then(setState)
+    return stop
+  }, [])
   return state
 }
