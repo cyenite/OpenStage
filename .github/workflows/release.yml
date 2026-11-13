@@ -4,11 +4,12 @@ on:
   push:
     tags: ['v*.*.*']
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   package:
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -25,7 +26,7 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -49,6 +50,8 @@ jobs:
 
   publish:
     needs: package
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
@@ -56,7 +59,7 @@ jobs:
           pattern: packages-*
           path: packages
           merge-multiple: true
-      - uses: softprops/action-gh-release@v3
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           files: packages/*
           generate_release_notes: true
